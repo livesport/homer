@@ -409,7 +409,7 @@
       command types, inputs, concurrency, human-in-the-loop gates, runners, auth, telemetry, console — each with the
       shortest thing you can type to use it. Beginner questions are answered <a href="#faq">at the end</a>.</p>
     <div class="facts">
-      <span><b>7</b> command types</span>
+      <span><b>8</b> command types</span>
       <span><b>4</b> execution backends</span>
       <span><b>5</b> auth schemes</span>
       <span><b>4</b> SSE streams</span>
@@ -850,9 +850,9 @@ server:    { maxProcesses: 10000, maxRetainedArtifactBytes: 16777216 }</code></p
     <section id="commands">
       <div class="sec-head">
         <div class="kicker">03 — Command types</div>
-        <h2>Seven ways to do work</h2>
+        <h2>Eight ways to do work</h2>
         <p>Each command is a tagged YAML node (<code>!&lt;cmd&gt;</code>) or a JSON object with a <code>type</code>
-          discriminator. All seven share the same timeout / failure / capture / condition fields (<code>timeout</code>
+          discriminator. All eight share the same timeout / failure / capture / condition fields (<code>timeout</code>
           is a no-op on <code>!&lt;agent&gt;</code>, which returns the child's id immediately).</p>
       </div>
 
