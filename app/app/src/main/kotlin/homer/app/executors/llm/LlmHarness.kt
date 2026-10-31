@@ -19,7 +19,7 @@ import kotlinx.serialization.json.contentOrNull
  * state, and its step-id dedupe keeps its translation idempotent. See ADR-0070.
  */
 interface LlmHarness<C> where C : Command, C : Command.LlmCommand {
-    /** Equals the command's [homer.app.models.kind] (`claude`, `codex`). */
+    /** Equals the command's [homer.app.models.kind] (`claude`, `codex`, `opencode`). */
     val id: String
 
     /** Whether the CLI reports a USD cost per run. False makes an unpriced attempt record CostSource.NONE. */

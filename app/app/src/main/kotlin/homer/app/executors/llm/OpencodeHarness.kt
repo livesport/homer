@@ -166,7 +166,10 @@ class OpencodeHarness(
  * two live subscribers on the stream service's), so a step counts once, by the id
  * opencode puts on it, per instance. The retained state is bounded (§12 rule 4: the
  * session id is agent-written stdout, so its cardinality is not ours): the bound sheds
- * one eldest session's bucket, never a live run's.
+ * one eldest session's bucket, a live run's once 64 newer sessions arrived while it
+ * ran — that run's cumulative then restarts, and the accounting scan's full-file
+ * re-read rebuilds it, so the charge stays ADR-0074-correct; only an incremental
+ * stream read of the shed run can see the restart.
  */
 internal class StepCostTotals {
     private val sessions = HashMap<String, Session>()
