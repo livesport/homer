@@ -1000,6 +1000,15 @@ server:    { maxProcesses: 10000, maxRetainedArtifactBytes: 16777216 }</code></p
         </article>
 
         <article class="f">
+          <h3><code>!&lt;opencode&gt;</code> — opencode CLI <span class="where">command</span></h3>
+          <p>Same shape as the Claude and Codex commands, driving <code>opencode run --format json</code>. Validated
+            fail-closed: needs a <code>step_finish</code> event with a successful finish reason and no failed one.</p>
+          <pre><code>- !&lt;opencode&gt;
+  prompt: !&lt;prompt&gt; { prompt: "Summarize the repo" }
+  options: { model: anthropic/claude-sonnet-4-5, agent: build, dir: repo }</code></pre>
+        </article>
+
+        <article class="f">
           <h3><code>!&lt;agent&gt;</code> — run another agent <span class="where">command</span></h3>
           <p>Fire-and-forget in-process dispatch of a child agent; the child's process id lands on stdout. Cycle and
             depth guards apply. The run's owner must be allowed to run the target (or <code>server.agentGrants</code>
@@ -1083,7 +1092,7 @@ server:    { maxProcesses: 10000, maxRetainedArtifactBytes: 16777216 }</code></p
       <div class="grid">
 
         <article class="f">
-          <h3>Inline prompt <span class="where">claude · codex</span></h3>
+          <h3>Inline prompt <span class="where">claude · codex · opencode</span></h3>
           <p>The prompt text lives in the agent file and is templated against the run env.</p>
           <pre><code>prompt: !&lt;prompt&gt;
   prompt: |
@@ -1091,7 +1100,7 @@ server:    { maxProcesses: 10000, maxRetainedArtifactBytes: 16777216 }</code></p
         </article>
 
         <article class="f">
-          <h3>Langfuse-managed prompt <span class="where">claude · codex</span></h3>
+          <h3>Langfuse-managed prompt <span class="where">claude · codex · opencode</span></h3>
           <p>Fetches the prompt from Langfuse by name plus an optional version or deployment label — central editing,
             versioning and A/B testing without redeploying agents.</p>
           <pre><code>prompt: !&lt;langfuse&gt;
@@ -1145,7 +1154,7 @@ server:    { maxProcesses: 10000, maxRetainedArtifactBytes: 16777216 }</code></p
         </article>
 
         <article class="f">
-          <h3>Escalate to a stronger model <span class="where">claude · codex</span></h3>
+          <h3>Escalate to a stronger model <span class="where">claude · codex · opencode</span></h3>
           <p>Run a step on a cheaper model first and rerun it on a stronger one only when a <code>when</code>
             predicate judges the outcome bad. <code>HMR_LLM_OUTCOME</code> tells the predicate how the previous model
             ended; steps without <code>escalate</code> run once, as before.</p>
@@ -1165,7 +1174,7 @@ escalate:
         </article>
 
         <article class="f">
-          <h3>Raw CLI escape hatch <span class="where">claude · codex</span></h3>
+          <h3>Raw CLI escape hatch <span class="where">claude · codex · opencode</span></h3>
           <p>Anything the typed options don't cover is appended verbatim. <code>cmd</code> overrides the CLI binary
             itself (default <code>claude</code> / <code>codex</code>); it may use <code>{{VAR}}</code>, but an input
             reference there rejects the agent at load.</p>
@@ -1174,7 +1183,7 @@ cmd: "/opt/claude/bin/claude"   # default: claude / codex</code></pre>
         </article>
 
         <article class="f">
-          <h3>Retry on transient LLM failure <span class="where">claude · codex</span></h3>
+          <h3>Retry on transient LLM failure <span class="where">claude · codex · opencode</span></h3>
           <p>Retries a non-zero exit or malformed event stream with exponential backoff and full jitter. Other errors
             (timeouts, cancellation) propagate immediately. Every attempt writes to the same artifact stem unless the
             agent's <code>artifactNameTemplate</code> carries <code>{{HMR_CMD_ATTEMPT}}</code>, which keeps a failed
@@ -1212,7 +1221,7 @@ cmd: "/opt/claude/bin/claude"   # default: claude / codex</code></pre>
         </article>
 
         <article class="f wide">
-          <h3>Reading LLM output <span class="where">claude · codex</span></h3>
+          <h3>Reading LLM output <span class="where">claude · codex · opencode</span></h3>
           <p>Both CLIs emit one JSON event per line. For <code>jsonPath</code> on stdout Homer re-assembles the stream
             into a JSON array, so a filter path sees the whole conversation.</p>
           <pre><code>resultEnvParam:
@@ -1446,9 +1455,9 @@ cmd: "/opt/claude/bin/claude"   # default: claude / codex</code></pre>
 
         <article class="f">
           <h3><code>{{VAR}}</code> templating <span class="where">agent.yaml</span></h3>
-          <p>Substituted in Claude/Codex prompts, option values and <code>cmd</code>, <code>!&lt;agent&gt;</code> target
+          <p>Substituted in Claude/Codex/opencode prompts, option values and <code>cmd</code>, <code>!&lt;agent&gt;</code> target
             names, workspace paths, lock keys and <code>artifactNameTemplate</code> — not in <code>!&lt;cmd&gt;</code>
-            argv or <code>script</code> bodies; a script reads the env as <code>$VAR</code>. An agent whose Claude/Codex
+            argv or <code>script</code> bodies; a script reads the env as <code>$VAR</code>. An agent whose Claude/Codex/opencode
             <code>cmd</code> references an input is rejected at load — an input never chooses the executable.</p>
           <pre><code>prompt: !&lt;prompt&gt; { prompt: "Review {{FILE}} for bugs" }</code></pre>
         </article>
@@ -2497,12 +2506,12 @@ homerApiUrl: https://homer.internal                      # external</code></pre>
           <p>Homer installs nothing on the target. The image or host must supply <code>/bin/sh</code>,
             <code>curl</code>, <code>tar</code>+<code>gzip</code>, and <code>rm</code> (fast
             <code>cleanAfterFinish</code> teardown on ssh; without it cleanup falls back to a slow
-            per-file SFTP walk), plus <code>claude</code> / <code>codex</code> / <code>homer_langgraph</code> if those
+            per-file SFTP walk), plus <code>claude</code> / <code>codex</code> / <code>opencode</code> / <code>homer_langgraph</code> if those
             command types are used. An ssh runner's <code>remoteWorkspaceRoot</code> must be an
             absolute, normalized path other than <code>/</code>; config load rejects anything else.
             For an external domain the environment is the machine the <code>homer-runner</code> instance runs on:
             it needs <code>/bin/sh</code> and <code>curl</code> for the helpers, plus <code>claude</code> /
-            <code>codex</code> / <code>homer_langgraph</code> if used, while tars and teardown are the instance's own work; the reference
+            <code>codex</code> / <code>opencode</code> / <code>homer_langgraph</code> if used, while tars and teardown are the instance's own work; the reference
             image ships none of <code>claude</code>, <code>node</code> or <code>python</code>.</p>
           <pre><code># minimum for a k8s runner image
 apk add --no-cache tar gzip curl</code></pre>
@@ -2566,7 +2575,7 @@ apk add --no-cache tar gzip curl</code></pre>
               <tr><td class="verb">POST</td><td class="path">/api/v1/questions/{id}/answer</td><td>Answer an open question and fire any bound dispatch.</td></tr>
               <tr><td class="verb">GET/DELETE</td><td class="path">/api/v1/dispatches[/{id}]</td><td>List newest first (<code>status</code>, <code>agentName</code>, <code>limit</code> default 100 and max 1000, <code>offset</code>; the reply carries <code>total</code>), inspect and cancel ask-and-dispatch records; secret parameter values come back masked.</td></tr>
               <tr><td class="verb">GET/DELETE</td><td class="path">/api/v1/continuations[/{id}]</td><td>List newest first (<code>status</code>, <code>agentName</code>, <code>limit</code> default 100 and max 1000, <code>offset</code>; the reply carries <code>total</code>), inspect and cancel completion continuations; secret parameter values come back masked.</td></tr>
-              <tr><td class="verb">GET</td><td class="path">/api/v1/costs</td><td>Rolling LLM harness (Claude/Codex) spend windows plus configured caps (admin).</td></tr>
+              <tr><td class="verb">GET</td><td class="path">/api/v1/costs</td><td>Rolling LLM harness (Claude/Codex/opencode) spend windows plus configured caps (admin).</td></tr>
               <tr><td class="verb">GET</td><td class="path">/api/v1/costs/monthly</td><td>Per-agent spend for one UTC month from the persistent ledger (admin).</td></tr>
               <tr><td class="verb">GET</td><td class="path">/api/v1/costs/totals</td><td>All-time per-agent spend (admin).</td></tr>
               <tr><td class="verb">GET</td><td class="path">/api/v1/costs/by-tag/{key}</td><td>Spend per value of one configured subject-tag key; <code>key</code> must be in <code>costTrackedTagKeys</code>; secret and removed-key values are excluded (fail-closed); <code>truncated</code> flags a total summed from fewer than all matching runs (admin).</td></tr>
@@ -3086,7 +3095,7 @@ GET /api/v1/status/all?tag=mr:15&amp;tag=projectId:4711</code></pre>
         </article>
 
         <article class="f">
-          <h3>Trace propagation into the CLI <span class="where">claude · codex</span></h3>
+          <h3>Trace propagation into the CLI <span class="where">claude · codex · opencode</span></h3>
           <p>The active span is handed to the Claude or Codex subprocess as <code>OTEL_TRACE_PARENT</code>, so CLI-emitted
             telemetry stitches into the same trace. No configuration.</p>
           <pre><code># automatic when a span is active</code></pre>

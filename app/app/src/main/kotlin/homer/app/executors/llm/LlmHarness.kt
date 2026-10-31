@@ -5,6 +5,7 @@ import homer.app.models.Command
 import homer.app.models.LlmEscalation
 import homer.app.models.LlmEvent
 import homer.app.models.Translation
+import homer.app.models.TurnStatus
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -74,3 +75,26 @@ interface LlmStdOutFilter : OutputLineFilter {
 
 /** The string at [key], or null when it is absent, not a primitive, or blank. */
 internal fun JsonObject.nonBlankString(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+/** The message of a CLI error line, from its `error` object or from the line itself. */
+internal fun JsonObject.errorMessage(): String? = (this["error"] as? JsonObject)?.nonBlankString("message") ?: nonBlankString("message")
+
+/** A CLI error line, as the transient-error event every harness reports it with. */
+internal fun transientError(line: JsonObject): Translation =
+    Translation.Events(listOf(LlmEvent.TransientError(line.errorMessage() ?: "no message")))
+
+/**
+ * The verdict the harnesses that end a turn share: a failed turn end fails the attempt,
+ * and a stream with no successful one has nothing to gate a zero exit on. [failedReason]
+ * and [noSuccessReason] name the CLI's own events, which is all that differs between them.
+ */
+internal fun inspectTurns(
+    events: List<LlmEvent>,
+    failedReason: String,
+    noSuccessReason: String,
+): Inspection {
+    val failed = events.firstOrNull { it is LlmEvent.TurnEnd && it.status is TurnStatus.Failed } as? LlmEvent.TurnEnd
+    if (failed != null) return Inspection.Malformed("$failedReason (${(failed.status as TurnStatus.Failed).reason})")
+    if (events.none { it is LlmEvent.TurnEnd && it.status == TurnStatus.Success }) return Inspection.Malformed(noSuccessReason)
+    return Inspection.Success
+}

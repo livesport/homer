@@ -138,14 +138,14 @@ RUN apk add --no-cache \
     jq \
     unzip
 
-# Install Claude Code CLI and Codex CLI globally (binaries accessible to all
-# users; they back the !<claude> and !<codex> command types).
+# Install Claude Code CLI, Codex CLI and opencode globally (binaries accessible
+# to all users; they back the !<claude>, !<codex> and !<opencode> command types).
 # CLAUDE_CODE_VERSION defaults to the latest published version; pin it
 # (--build-arg CLAUDE_CODE_VERSION=x.y.z) for reproducible builds and to match
 # server.requireClaudeCodeVersion.
 ARG CLAUDE_CODE_VERSION=latest
 # The npm cache is cleaned in the same layer: nothing reads it at run time.
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @openai/codex && \
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @openai/codex opencode-ai && \
     npm cache clean --force
 
 # Configure glab for homer user (writes to /home/homer/.config/glab-cli/)

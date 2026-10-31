@@ -8,7 +8,7 @@ file is canonical for the LLM harness recipe and its cost accounting
 
 ## LLM cost accounting
 
-Every LLM harness attempt (`!<claude>`, `!<codex>`) is cost-accounted regardless of exit
+Every LLM harness attempt (`!<claude>`, `!<codex>`, `!<opencode>`) is cost-accounted regardless of exit
 code: `LlmAttemptAccounting` charges what `LlmAttemptPricing` resolves — a lenient stdout scan
 (`scanLlmAccounting`) then `LlmCostResolver` (session-spend endpoint → the harness's own cost
 figure, or `CostSource.NONE` when the harness reports none and the endpoint doesn't answer).

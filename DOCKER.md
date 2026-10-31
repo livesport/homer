@@ -936,7 +936,7 @@ It is about 205 MB compressed against 547 MB for the full image (linux/arm64,
 measured for ADR-0094). It holds a JRE, Homer, `sh`/`bash`, `su-exec`, `curl`
 and `python3` with pip and the `homer_langgraph` runtime, so the console's
 LangGraph graph view and LangGraph status and resume, which run on the server,
-keep working. It has no Claude Code, Codex, Node.js/npm, git, git-lfs, glab,
+keep working. It has no Claude Code, Codex, opencode, Node.js/npm, git, git-lfs, glab,
 jq or SSH client, and only busybox's basic `unzip`: a run on the built-in
 `local` runner that calls one of them fails with `command not found`, so route
 every agent to a runner that has them. The full image is built `FROM` the slim
