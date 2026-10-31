@@ -125,7 +125,9 @@ class OpencodeHarness(
         // ADR-0074: `cost` is this step's own, while TurnEnd.costUsd must be cumulative for the
         // process, so the step's cost is accumulated by session. A stream whose session id does
         // not gate has no bucket to accumulate in, and reports the step alone.
-        val stepCost = (part["cost"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it >= 0.0 } ?: 0.0
+        // CWE-682: a negative or non-finite `cost` in agent-written stdout is no cost at all — an
+        // over-large literal parses to Infinity and would poison the cumulative figure for good.
+        val stepCost = (part["cost"] as? JsonPrimitive)?.doubleOrNull?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
         val cost = gateSessionId(line.nonBlankString("sessionID"))?.let { stepCosts.add(it, stepId, stepCost) } ?: stepCost
         return Translation.Events(listOf(LlmEvent.TurnEnd(status(reason), usage(part["tokens"] as? JsonObject), costUsd = cost)))
     }

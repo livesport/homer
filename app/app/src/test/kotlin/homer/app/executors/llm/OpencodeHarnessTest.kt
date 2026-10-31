@@ -217,9 +217,10 @@ class OpencodeHarnessTest {
 
     @Test
     fun `negative and non-numeric usage and cost coerce to zero`() {
-        // Only the three `step_finish` lines with a step id translate; the one without is Malformed.
+        // Only the four `step_finish` lines with a step id translate; the one without is Malformed.
+        val text = fixtureText("malformed.jsonl")
         val events = fixture("malformed.jsonl").filterIsInstance<LlmEvent.TurnEnd>()
-        assertEquals(3, events.size)
+        assertEquals(4, events.size)
         val unparseable = events.first()
         assertEquals(LlmUsage(output = 5), unparseable.usage)
         // A negative cost is no cost at all, so it leaves the running total where it was.
@@ -227,6 +228,10 @@ class OpencodeHarnessTest {
         assertEquals(LlmUsage(input = 10, output = 5), events[1].usage)
         assertEquals(0.002, events[1].costUsd)
         assertEquals(0.0027, events[2].costUsd)
+        // CWE-682: `1e999` parses to Infinity, which is not a cost either — the running total
+        // stays where it was, and so does the figure the accounting scan charges the run.
+        assertEquals(0.0027, events[3].costUsd)
+        assertEquals(0.0027, scanLlmAccounting(text.lineSequence(), harness::translate).cliCostUsd)
     }
 
     @Test
