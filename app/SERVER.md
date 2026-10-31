@@ -341,8 +341,8 @@ llmPrice:
   lookup was skipped or abandoned and only the bounded local accounting ran: the attempt's
   coroutine was cancelled before the lookup — process kill, server shutdown — or the
   background settlement was cancelled or threw mid-lookup; a harness that reports no cost
-  of its own (Codex, opencode) charges nothing, and a Claude attempt is charged its CLI figure only if
-  its result event arrived; only set when `llmPrice.sessionSpend` is configured),
+  of its own (Codex) charges nothing, and a Claude or opencode attempt is charged its CLI
+  figure only if its result event arrived; only set when `llmPrice.sessionSpend` is configured),
   `lookup failed` (an unexpected internal error, e.g. from the HTTP client itself).
 - `resultEnvParam` mappings of `total_cost_usd` still return the CLI's raw figure.
 
