@@ -12,8 +12,11 @@ import kotlinx.serialization.json.contentOrNull
 
 /**
  * One LLM coding-harness CLI, as seen by [LlmHarnessExecutor]: how to launch it and
- * how to read what it wrote. Stateless; constructed with its own config only, so it is
- * tested as plain functions against recorded stdout lines. See ADR-0070.
+ * how to read what it wrote. Constructed with its own config only, so it is tested as
+ * plain functions against recorded stdout lines. Instances are per-consumer (the
+ * executor factory, the `/llm-events` harness map and agentdebug each build their own),
+ * not server-wide singletons; an adapter may carry bounded per-instance accounting
+ * state, and its step-id dedupe keeps its translation idempotent. See ADR-0070.
  */
 interface LlmHarness<C> where C : Command, C : Command.LlmCommand {
     /** Equals the command's [homer.app.models.kind] (`claude`, `codex`). */

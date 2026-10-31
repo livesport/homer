@@ -13,7 +13,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
-import java.util.concurrent.ConcurrentHashMap
 
 /** opencode CLI (`opencode run --format json`). Every accessor is untyped and total. */
 class OpencodeHarness(
@@ -161,30 +160,47 @@ class OpencodeHarness(
  * `TurnEnd.costUsd` to be cumulative for the harness process, while opencode reports one
  * step's own cost on each `step_finish`, so [OpencodeHarness] accumulates.
  *
- * The adapter is a server-wide singleton and one stdout file is translated more than once
- * — a live subscriber and the attempt's accounting scan read the same file in parallel —
- * so a step counts once, by the id opencode puts on it, and the retained state is bounded
- * (§12 rule 4: the session id is agent-written stdout, so its cardinality is not ours).
+ * Each adapter instance carries its own [StepCostTotals] — the executor factory, the
+ * `/llm-events` harness map and agentdebug each build their own — and one instance reads
+ * a stdout file more than once (the attempt's accounting scan and the telemetry hand-off;
+ * two live subscribers on the stream service's), so a step counts once, by the id
+ * opencode puts on it, per instance. The retained state is bounded (§12 rule 4: the
+ * session id is agent-written stdout, so its cardinality is not ours): the bound sheds
+ * one eldest session's bucket, never a live run's.
  */
 internal class StepCostTotals {
-    private val sessions = ConcurrentHashMap<String, Session>()
+    private val sessions = HashMap<String, Session>()
+
+    /** Sessions in insertion order, so the bound knows which bucket is eldest. */
+    private val order = ArrayDeque<String>()
 
     /** The session's running total once [stepId]'s [cost] is counted; a step already counted leaves it unchanged. */
+    @Synchronized
     fun add(
         sessionId: String,
         stepId: String,
         cost: Double,
     ): Double {
-        // Checked before the insert: clearing the map from inside `computeIfAbsent` is not allowed.
-        if (sessions.size >= MAX_TRACKED_SESSIONS) sessions.clear()
-        return sessions.computeIfAbsent(sessionId) { Session() }.add(stepId, cost)
+        // Checked before the insert, and only for a session with no bucket yet: eviction makes
+        // room for exactly one new session by dropping one eldest bucket. Clearing every
+        // session instead would restart a mid-stream run's cumulative `TurnEnd.costUsd`, making
+        // the charge depend on when the scan reads the file — the order-dependent under-charge
+        // ADR-0074 forbids.
+        if (!sessions.containsKey(sessionId) && sessions.size >= MAX_TRACKED_SESSIONS) {
+            sessions.remove(order.removeFirstOrNull())
+        }
+        val existing = sessions[sessionId]
+        if (existing != null) return existing.add(stepId, cost)
+        val created = Session()
+        sessions[sessionId] = created
+        order.addLast(sessionId)
+        return created.add(stepId, cost)
     }
 
     private class Session {
         private val counted = HashSet<String>()
         private var total = 0.0
 
-        @Synchronized
         fun add(
             stepId: String,
             cost: Double,

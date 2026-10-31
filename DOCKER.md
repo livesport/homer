@@ -371,6 +371,8 @@ Build arguments are set at **image build time** (not runtime). They must be pass
 | `HOMER_VERSION` | `dev` | Version label embedded in the image. Distinct from the `HOMER_VERSION` *environment* variable above, which selects the pulled release tag. |
 | `HOMER_DEBUG` | `0` | Set to `1` to include the `agentdebug` tool in the image |
 | `CLAUDE_CODE_VERSION` | `latest` | Claude Code CLI version to install. Pin it (e.g. `1.2.3`) for reproducible builds and to match `server.requireClaudeCodeVersion`. |
+| `CODEX_VERSION` | `0.166.0` | Codex CLI version to install. Pinned by default: the CLI runs agent prompts with the workspace's secrets in its environment, so a build ships a version someone chose, not whatever npm had. |
+| `OPENCODE_VERSION` | `1.19.5` | opencode CLI version to install. Pinned by default, for the same reason. |
 
 ### Artifactory build secrets (optional)
 
@@ -432,7 +434,9 @@ extra flags are needed for a local build.
 
 The published full `homer-app` images install the Claude Code CLI at `@latest`
 as of build time, so each release ships whatever version npm had that day (the
-`-slim` variant ships no CLI).
+`-slim` variant ships no CLI). The Codex and opencode CLIs in the same image are
+pinned instead — `CODEX_VERSION` and `OPENCODE_VERSION` in
+[`app/Dockerfile`](app/Dockerfile), bumped deliberately.
 There are two ways to pin, depending on how you build:
 
 **Building homer-app from source** — pass the build argument:

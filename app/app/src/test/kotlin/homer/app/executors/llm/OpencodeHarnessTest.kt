@@ -164,13 +164,30 @@ class OpencodeHarnessTest {
 
     @Test
     fun `translating the same stream twice does not double-charge it`() {
-        // A live subscriber and the attempt's accounting scan read the same stdout file, and the
-        // adapter is a server-wide singleton, so a step must count once (ADR-0074, ADR-0070).
+        // One adapter instance reads the same stdout file more than once (the accounting scan
+        // and the telemetry hand-off), so a step must count once per instance (ADR-0074, ADR-0070).
         val text = fixtureText("success.jsonl")
         val first = scanLlmAccounting(text.lineSequence(), harness::translate).cliCostUsd
         val second = scanLlmAccounting(text.lineSequence(), harness::translate).cliCostUsd
         assertEquals(0.0121 + 0.0034, first)
         assertEquals(first, second)
+    }
+
+    @Test
+    fun `hitting the session bound evicts the one eldest bucket, not every live session`() {
+        // `StepCostTotals` keeps at most 64 session buckets; the 65th sheds the eldest, alone.
+        val totals = StepCostTotals()
+        repeat(64) { s ->
+            totals.add("ses_$s", "p1", 1.0)
+            assertEquals(2.0, totals.add("ses_$s", "p2", 1.0))
+        }
+        assertEquals(1.0, totals.add("ses_new", "p1", 1.0))
+        // ses_0's bucket went; ses_1's did not, so its steps are still counted, and a
+        // mid-stream run's cumulative figure never restarts (ADR-0074).
+        assertEquals(2.0, totals.add("ses_1", "p1", 1.0))
+        assertEquals(2.0, totals.add("ses_63", "p1", 1.0))
+        // The evicted bucket forgot its counted steps: p1 counts again on a fresh total.
+        assertEquals(1.0, totals.add("ses_0", "p1", 1.0))
     }
 
     @Test

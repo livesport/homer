@@ -1176,10 +1176,10 @@ escalate:
         <article class="f">
           <h3>Raw CLI escape hatch <span class="where">claude · codex · opencode</span></h3>
           <p>Anything the typed options don't cover is appended verbatim. <code>cmd</code> overrides the CLI binary
-            itself (default <code>claude</code> / <code>codex</code>); it may use <code>{{VAR}}</code>, but an input
+            itself (default <code>claude</code> / <code>codex</code> / <code>opencode</code>); it may use <code>{{VAR}}</code>, but an input
             reference there rejects the agent at load.</p>
           <pre><code>options: { options: ["--some-new-flag", "value"] }
-cmd: "/opt/claude/bin/claude"   # default: claude / codex</code></pre>
+cmd: "/opt/claude/bin/claude"   # default: claude / codex / opencode</code></pre>
         </article>
 
         <article class="f">
@@ -1222,7 +1222,7 @@ cmd: "/opt/claude/bin/claude"   # default: claude / codex</code></pre>
 
         <article class="f wide">
           <h3>Reading LLM output <span class="where">claude · codex · opencode</span></h3>
-          <p>Both CLIs emit one JSON event per line. For <code>jsonPath</code> on stdout Homer re-assembles the stream
+          <p>Each CLI emits one JSON event per line. For <code>jsonPath</code> on stdout Homer re-assembles the stream
             into a JSON array, so a filter path sees the whole conversation.</p>
           <pre><code>resultEnvParam:
   - src: STD_OUT                       # Claude: total spend of the run
@@ -2952,13 +2952,13 @@ sessionSecretPrevious: "@SYSENV:OLD_SECRET"</code></pre>
       <div class="sec-head">
         <div class="kicker">16 — Observability &amp; cost</div>
         <h2>Traces, spend, logs</h2>
-        <p>Every run is a trace, every command a span. Claude and Codex spend is metered per attempt into a durable
+        <p>Every run is a trace, every command a span. Claude, Codex and opencode spend is metered per attempt into a durable
           ledger that also backs the caps.</p>
       </div>
 
       <figure class="diagram">
         <svg viewBox="0 0 1160 420" role="img"
-             aria-label="Spend measured during one run gates the next request. A request for an agent containing a Claude or Codex command is checked against the rolling cost windows first: over the cap it is refused with 429 before any tokens are spent. Under the cap the run proceeds, each Claude or Codex attempt is priced (spend endpoint, else the Claude CLI's own estimate — a Codex attempt with no spend endpoint configured charges nothing), and every billable attempt — including failed ones — is appended to an append-only ledger in SQLite, which is what the next cap check reads. Separately, each command produces a telemetry span with declared secrets redacted, exported to Langfuse over OTLP or to stderr (java.util.logging, not app.log). Caps are a soft throttle: concurrent requests can each pass the check and collectively overshoot, and a run already past the boundary always completes.">
+             aria-label="Spend measured during one run gates the next request. A request for an agent containing an LLM command is checked against the rolling cost windows first: over the cap it is refused with 429 before any tokens are spent. Under the cap the run proceeds, each LLM attempt is priced (spend endpoint, else the harness CLI's own estimate — a Claude or opencode attempt reports one, a Codex attempt with no spend endpoint configured charges nothing), and every billable attempt — including failed ones — is appended to an append-only ledger in SQLite, which is what the next cap check reads. Separately, each command produces a telemetry span with declared secrets redacted, exported to Langfuse over OTLP or to stderr (java.util.logging, not app.log). Caps are a soft throttle: concurrent requests can each pass the check and collectively overshoot, and a run already past the boundary always completes.">
           <defs>
             <marker id="co-arrow" viewBox="0 0 10 10" refX="9" refY="5"
                     markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -3096,7 +3096,7 @@ GET /api/v1/status/all?tag=mr:15&amp;tag=projectId:4711</code></pre>
 
         <article class="f">
           <h3>Trace propagation into the CLI <span class="where">claude · codex · opencode</span></h3>
-          <p>The active span is handed to the Claude or Codex subprocess as <code>OTEL_TRACE_PARENT</code>, so CLI-emitted
+          <p>The active span is handed to the Claude, Codex or opencode subprocess as <code>OTEL_TRACE_PARENT</code>, so CLI-emitted
             telemetry stitches into the same trace. No configuration.</p>
           <pre><code># automatic when a span is active</code></pre>
         </article>
@@ -3249,7 +3249,7 @@ HOMER_LOG_DIR=/app/workspace</code></pre>
             subject tags as chips and its
             cost — taken from the ledger through the status API, so it is still there after the artifacts are purged —
             labelled <code>proxy</code>, <code>CLI estimate</code> or <code>mixed</code> by
-            where the figure came from; each Claude or Codex step shows its own cost, source (<code>not reported</code>
+            where the figure came from; each Claude, Codex or opencode step shows its own cost, source (<code>not reported</code>
             when the harness reported no cost and no session-spend endpoint answered), fallback reason, token
             usage and CLI session id. When
             <code>langfuse.projectId</code> is configured there is a link to the run's Langfuse trace. The agent name
@@ -3269,7 +3269,7 @@ HOMER_LOG_DIR=/app/workspace</code></pre>
 
         <article class="f">
           <h3>Live LLM conversation view <span class="where">console</span></h3>
-          <p>For a Claude or Codex step, renders the conversation from the server's canonical <code>/llm-events</code>
+          <p>For a Claude, Codex or opencode step, renders the conversation from the server's canonical <code>/llm-events</code>
             stream — model, turn count, elapsed time and the in-flight tool call while live — then the completed run in
             the same inline view, with a status badge, token usage (reasoning tokens shown when reported) and the cost
             the step was charged (session-spend or CLI figure), or "not reported" when nothing priced it. The event

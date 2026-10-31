@@ -144,8 +144,13 @@ RUN apk add --no-cache \
 # (--build-arg CLAUDE_CODE_VERSION=x.y.z) for reproducible builds and to match
 # server.requireClaudeCodeVersion.
 ARG CLAUDE_CODE_VERSION=latest
+# The Codex and opencode CLIs are pinned (CWE-1357): an unpinned global npm
+# install ships every later release of a binary that runs agent prompts with the
+# workspace's secrets in its environment. Bump the pins deliberately.
+ARG CODEX_VERSION=0.166.0
+ARG OPENCODE_VERSION=1.19.5
 # The npm cache is cleaned in the same layer: nothing reads it at run time.
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @openai/codex opencode-ai && \
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @openai/codex@${CODEX_VERSION} opencode-ai@${OPENCODE_VERSION} && \
     npm cache clean --force
 
 # Configure glab for homer user (writes to /home/homer/.config/glab-cli/)
