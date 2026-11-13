@@ -35,8 +35,8 @@ fun runnerType(
 
 /**
  * Operator view of every configured runner; never carries a token or env value. [namesVisible]
- * false is the redacted view a `read` grant on `*` gets: aliases and instance names are
- * withheld, capacity and counts stay. See ADR-0066, ADR-0077, ADR-0111.
+ * false is the redacted view a `read` grant on `*` gets: operator-chosen aliases and instance
+ * names are blanked, capacity and counts stay. See ADR-0066, ADR-0077, ADR-0111.
  */
 fun runnersStatus(
     config: AppConfig,
@@ -69,7 +69,7 @@ fun runnersStatus(
                     when (cfg) {
                         is RunnerConfig.Ssh -> {
                             RunnerStatus(
-                                visibleAlias(alias, namesVisible),
+                                visibleName(alias, namesVisible),
                                 runnerType(config, alias),
                                 visibleTags(cfg.tags, namesVisible),
                                 cfg.concurrency,
@@ -79,7 +79,7 @@ fun runnersStatus(
 
                         is RunnerConfig.Kubernetes -> {
                             RunnerStatus(
-                                visibleAlias(alias, namesVisible),
+                                visibleName(alias, namesVisible),
                                 runnerType(config, alias),
                                 visibleTags(cfg.tags, namesVisible),
                                 cfg.concurrency,
@@ -97,11 +97,19 @@ fun runnersStatus(
     return RunnersStatusResponse(rows)
 }
 
-/** The alias a response carries: null in a redacted view, where an operator-chosen name is withheld. See ADR-0077. */
-private fun visibleAlias(
-    alias: String,
+/** The value a redacted view carries in place of an operator-chosen name: blank, never a name. */
+private const val WITHHELD_NAME = ""
+
+/**
+ * The name a response carries: blank in a redacted view, where an operator-chosen alias, instance
+ * id or instance name is withheld. Blank rather than null, so the row keeps the non-null shape the
+ * console's DTO mirror declares — a nullable field would force a console type change (ADR-0082).
+ * See ADR-0077, ADR-0111.
+ */
+private fun visibleName(
+    name: String,
     namesVisible: Boolean,
-): String? = alias.takeIf { namesVisible }
+): String = if (namesVisible) name else WITHHELD_NAME
 
 /**
  * The tags a response carries. An admin sees the configured ones; a redacted view re-checks
@@ -131,7 +139,7 @@ private fun externalRunnerStatus(
 ): RunnerStatus {
     val instances = domain?.instances().orEmpty().sortedBy { it.registeredAt }
     return RunnerStatus(
-        alias = visibleAlias(alias, namesVisible),
+        alias = visibleName(alias, namesVisible),
         kind = kind,
         tags = emptyList(),
         concurrency = null,
@@ -139,8 +147,8 @@ private fun externalRunnerStatus(
         instances =
             instances.map {
                 RunnerInstanceStatus(
-                    instanceId = it.id.takeIf { namesVisible },
-                    name = it.name.takeIf { namesVisible },
+                    instanceId = visibleName(it.id, namesVisible),
+                    name = visibleName(it.name, namesVisible),
                     tags = visibleTags(it.tags, namesVisible),
                     concurrency = it.declaredConcurrency,
                     activeSessions = it.inUse,
@@ -152,7 +160,11 @@ private fun externalRunnerStatus(
     )
 }
 
-/** Pending claims grouped by filter, oldest group first; ages clamp at 0. [namesVisible] redacts an alias filter like [runnersStatus]. */
+/**
+ * Pending claims grouped by filter, oldest group first; ages clamp at 0. [namesVisible] false
+ * empties an alias filter like [runnersStatus] withholds a row's alias — `null` here, because
+ * [RunnerFilterView.alias] is nullable in the DTO the console already mirrors.
+ */
 fun runnerQueueStatus(
     pending: List<PendingClaim>,
     nowMs: Long,
@@ -166,7 +178,7 @@ fun runnerQueueStatus(
                 RunnerQueueGroup(
                     filter =
                         when (filter) {
-                            is RunnerFilter.Alias -> RunnerFilterView(alias = visibleAlias(filter.alias, namesVisible))
+                            is RunnerFilter.Alias -> RunnerFilterView(alias = filter.alias.takeIf { namesVisible })
                             is RunnerFilter.Tags -> RunnerFilterView(tags = visibleTags(filter.tags, namesVisible))
                         },
                     pending = claims.size,

@@ -101,7 +101,8 @@ below and ADR-0111)*.
 
 `GET /api/v1/runners` and `/api/v1/runners/queue` are no longer admin-only: a
 caller holding a `read` grant on the literal `*` pattern reads them with
-`alias`, `instanceId`, `name` and an alias filter nulled, while the built-in
+`alias`, `instanceId` and `name` blanked (and a queue group's alias filter
+`null`, the value it already carries when unset), while the built-in
 `local` row keeps its alias and the generic fields (`kind`, tags, concurrency,
 counts, ages) stay. That is this ADR's own classification applied to the
 server-wide view: operator-chosen naming stays admin-only, the generic kind goes

@@ -195,8 +195,9 @@ class RunnerStatusReportTest {
 
         val status = runnersStatus(config, registry, namesVisible = false)
 
-        // The built-in `local` alias is Homer's own name; every operator-chosen one is withheld.
-        assertEquals(listOf("local", null, null), status.runners.map { it.alias })
+        // The built-in `local` alias is Homer's own name; every operator-chosen one is blanked, so
+        // the row keeps the non-null shape the console's DTO mirror declares (ADR-0082).
+        assertEquals(listOf("local", "", ""), status.runners.map { it.alias })
         assertEquals(listOf("local", "ssh", "external"), status.runners.map { it.kind })
         val ssh = status.runners[1]
         assertEquals(listOf("gpu"), ssh.tags)
@@ -205,8 +206,8 @@ class RunnerStatusReportTest {
         assertEquals(null, workers.concurrency)
         assertEquals(0, workers.inUse)
         val listed = workers.instances!!.single()
-        assertEquals(null, listed.instanceId)
-        assertEquals(null, listed.name)
+        assertEquals("", listed.instanceId)
+        assertEquals("", listed.name)
         assertEquals(listOf("gpu"), listed.tags)
         assertEquals(2, listed.concurrency)
         assertEquals(0, listed.activeSessions)

@@ -38,12 +38,12 @@ class RunnerStatusAccessTest : E2eTestBase() {
             assertEquals(HttpStatusCode.OK, response.status)
             assertEquals("no-store", response.headers[HttpHeaders.CacheControl], "polled state must never be cached")
             val view = E2e.json.decodeFromString<RunnersView>(response.bodyAsText())
-            // The built-in `local` alias is Homer's own name; every configured alias is withheld.
+            // The built-in `local` alias is Homer's own name; every configured alias is blanked.
             assertEquals("local", view.runners.first().alias)
-            assertTrue(view.runners.drop(1).all { it.alias == null }, "a configured alias must be withheld: $view")
+            assertTrue(view.runners.drop(1).all { it.alias.isEmpty() }, "a configured alias must be withheld: $view")
             assertTrue(view.runners.any { it.kind == "external" }, "the external domain itself stays visible: $view")
             assertTrue(
-                view.runners.flatMap { it.instances.orEmpty() }.all { it.name == null && it.instanceId == null },
+                view.runners.flatMap { it.instances.orEmpty() }.all { it.name.isEmpty() && it.instanceId.isEmpty() },
                 "an instance's identity is operator-chosen too: $view",
             )
         }

@@ -24,7 +24,7 @@ class RunnerAffinityTest : E2eTestBase() {
             .runners
             .filter { it.alias == "e2e-affinity" }
             .flatMap { it.instances.orEmpty() }
-            .mapNotNull { it.name }
+            .map { it.name }
             .toSet()
 
     /** Both instances must be polling before the flow starts, or the preference proves nothing. */

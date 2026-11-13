@@ -540,10 +540,11 @@ class GrantsEnforcementTest {
             val body = res.bodyAsText()
             // Counts, capacity and liveness are what the grant is for; operator naming is not.
             assertTrue(body.contains("\"alias\": \"local\""), "the built-in local alias is Homer's own name: $body")
+            assertTrue(body.contains("\"alias\": \"\""), "a configured alias is blanked, keeping the row's shape: $body")
             assertFalse(body.contains("gpu-box"), "a configured alias must be withheld: $body")
             assertFalse(body.contains("host-1"), "an instance name must be withheld: $body")
-            assertTrue(body.contains("\"instanceId\": null"), "an instance id must be withheld: $body")
-            assertTrue(body.contains("\"name\": null"), "an instance name must be withheld: $body")
+            assertTrue(body.contains("\"instanceId\": \"\""), "an instance id is blanked: $body")
+            assertTrue(body.contains("\"name\": \"\""), "an instance name is blanked: $body")
             assertTrue(body.contains("\"kind\": \"external\""), "the generic backend kind stays: $body")
             assertTrue(body.contains("\"concurrency\": 2"), "instance capacity stays: $body")
             assertTrue(body.contains("\"draining\": false"), "instance liveness stays: $body")

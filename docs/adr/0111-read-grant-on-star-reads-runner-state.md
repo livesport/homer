@@ -68,9 +68,17 @@ deployment that keeps its tokens scoped sees a change.
   (`authorizer.isAdmin(principalName())`), the `/health` pattern of ADR-0077, and
   passed into `RunnerStatusReport` as a **required** parameter: a new call site
   cannot inherit visibility by omission. With `namesVisible = false` the view
-  nulls `alias` on every configured row, `instanceId` and `name` on every
-  instance, and the alias of a queue filter group. The built-in `local` row
+  blanks `alias` on every configured row, and `instanceId` and `name` on every
+  instance; the alias of a queue filter group is `null`, the value its DTO
+  already carries when no alias filter is set. The built-in `local` row
   keeps its alias, which Homer assigns rather than the operator (ADR-0077).
+- The withheld value is the empty string, not `null`, because `alias`,
+  `instanceId` and `name` are non-null in the response DTO the console mirrors
+  (ADR-0082): a nullable field would make the console's `types/homer.ts` declare
+  `string | null` for a shape it never has to handle, so the widening would drag
+  a console change behind it. Blanking keeps one shape for every reader, keeps
+  the admin JSON byte-identical, and costs the redacted reader nothing — an
+  empty name is as uninformative as a missing one.
 - Redaction keeps what a watcher is there for: `kind`, `tags`, `concurrency`,
   `inUse`, `activeSessions`, `registeredAt`, `lastSeenAt` and `draining`. A tag
   is re-checked against `RunnerTagValidation` at the serializer on the redacted
@@ -100,7 +108,9 @@ deployment that keeps its tokens scoped sees a change.
   `agents: ["prod-*"]` must add an explicit `*` grant to enable this; the
   narrowness is deliberate.
 - Bad: the redacted view is a second shape of the same DTO, so a future field
-  must be classified as operator-named or generic when it is added.
+  must be classified as operator-named or generic when it is added, and an
+  operator-chosen name that must be withheld has to be blanked rather than
+  nulled while the console mirror declares it non-null (ADR-0082).
 
 ## Pros and Cons of the Options
 

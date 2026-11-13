@@ -228,7 +228,7 @@ Output:
 | POST | `/api/v1/runner/sessions/{sid}/ops/{opId}/tar` | Post the gzip'd tar of a `download` op (`?kind=dir\|file`; `202`; `400` bad `kind`; `404` unknown or finished op; `408` past `transferTimeoutSec`; `413` over `maxTransferBytes` compressed or decompressed; `422` a refused entry (escaping, or a mode that cannot be normalized); `429` another post of the op in flight). | Runner domain token |
 | POST | `/api/v1/runner/sessions/{sid}/ops/{opId}/output` | Append one output chunk (`?stream=stdout\|stderr&seq=N`; `202`; `400` bad `stream` or `seq`; `404` unknown or finished op; `408` past `transferTimeoutSec`; `409` out of order; `413` over 1 MiB; `429` another chunk of the op and stream in flight). | Runner domain token |
 | GET | `/api/v1/status` | Get server status | `admin` role required |
-| GET | `/api/v1/runners` | Configured runners with permits in use, and each external domain's live instances. An `admin` sees every operator-chosen name; a caller holding a `read` grant on `*` gets the same view with `alias`, `instanceId` and `name` nulled (the built-in `local` row keeps its alias, and tags, counts and ages stay). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*` (`403` otherwise) |
+| GET | `/api/v1/runners` | Configured runners with permits in use, and each external domain's live instances. An `admin` sees every operator-chosen name; a caller holding a `read` grant on `*` gets the same view with `alias`, `instanceId` and `name` blanked (the built-in `local` row keeps its alias, and tags, counts and ages stay). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*` (`403` otherwise) |
 | GET | `/api/v1/runners/queue` | Pending runner claims: count, oldest age, breakdown by filter (an alias filter carries `alias: null` for a caller without the `admin` role). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*` (`403` otherwise) |
 | GET | `/api/v1/maintenance` | Maintenance mode state: `enabled`, `since` (Unix epoch seconds; null while off, and also for a mode that was already on when the server booted — the toggle time is not persisted) and `queued` (starts waiting). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*`; a caller with neither gets the same `404` an unmounted path answers |
 | POST | `/api/v1/maintenance` | Turn maintenance mode on or off (body `{"enabled": true\|false}`, `400` on a malformed body). On: cron fires are skipped and every other agent start queues — except a start that is part of a run still `WORKING` (a `!<agent>` hop, a dispatch, a continuation fire from a live origin), which is admitted at once. Off: the queue drains in arrival order within one release drain, `releaseConcurrency` at a time — rapid re-toggles overlap drains, so the order across drains is not guaranteed. See [below](#getpost-apiv1maintenance). | `admin` role required; a non-admin gets the same `404` an unmounted path answers |
@@ -411,8 +411,10 @@ absent when `server.localRunner.enabled` is `false` (see
 **Who reads it.** An `admin` caller sees the aliases and instance names as
 configured. A caller holding a `read` grant on `*` — the grant that says "every
 agent", not one agent — reads the same state with every operator-chosen name
-withheld: `alias` is `null` on each configured row, and `instanceId` and `name`
-are `null` on every instance. The built-in `local` row keeps its alias, which
+withheld: `alias` is the empty string on each configured row, and `instanceId`
+and `name` are the empty string on every instance. Blank rather than `null`, so
+the redacted row keeps the shape every reader gets and no client has to handle
+two. The built-in `local` row keeps its alias, which
 Homer assigns itself. Tags, `kind`, `concurrency`, `inUse`, `activeSessions`,
 the timestamps and `draining` are unchanged, so capacity and liveness stay
 readable. A tag is emitted only after re-checking it against the tag pattern, so
