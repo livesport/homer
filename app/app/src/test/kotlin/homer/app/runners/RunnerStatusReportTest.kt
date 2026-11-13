@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
 class RunnerStatusReportTest {
@@ -139,25 +140,31 @@ class RunnerStatusReportTest {
         }
 
     @Test
-    fun `external domain lists its live instances with seconds timestamps`() {
+    fun `external domain lists its live instances with seconds timestamps and the version each reported`() {
         val now = 1_700_000_123_456L
         val queue = RunnerClaimQueue(maxPending = 10)
         val domain = ExternalRunnerDomain("workers", RunnerConfig.External(token = "t".repeat(32)), queue, clock = { now })
-        domain.register(RegisterInstanceRequest(name = "host-1", tags = listOf("gpu", "linux"), concurrency = 2))
+        domain.register(RegisterInstanceRequest(name = "host-1", tags = listOf("gpu", "linux"), concurrency = 2, version = "1.42.0"))
+        domain.register(RegisterInstanceRequest(name = "host-2"))
         val config = appConfig(mapOf("workers" to RunnerConfig.External(token = "t".repeat(32))))
         val registry = RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
 
         val workers = runnersStatus(config, registry, namesVisible = true).runners.first { it.alias == "workers" }
 
         assertEquals(0, workers.inUse)
-        assertEquals(1, workers.instances?.size)
-        val instance = workers.instances!!.single()
+        assertEquals(2, workers.instances?.size)
+        val instance = workers.instances!!.single { it.name == "host-1" }
         assertEquals(1_700_000_123L, instance.registeredAt)
         assertEquals(1_700_000_123L, instance.lastSeenAt)
         assertEquals(listOf("gpu", "linux"), instance.tags)
         assertEquals(2, instance.concurrency)
         assertEquals(0, instance.activeSessions)
         assertFalse(instance.draining)
+        assertEquals("1.42.0", instance.version)
+        assertNull(
+            workers.instances.single { it.name == "host-2" }.version,
+            "an instance that reported no version is an explicit null, not an absent row",
+        )
     }
 
     @Test

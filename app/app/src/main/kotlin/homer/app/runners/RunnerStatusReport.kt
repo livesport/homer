@@ -153,6 +153,7 @@ private fun externalRunnerStatus(
                     lastSeenAt = it.lastSeenAt / 1000,
                     registeredAt = it.registeredAt / 1000,
                     draining = it.draining,
+                    version = it.version,
                 )
             },
     )

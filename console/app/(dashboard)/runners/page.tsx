@@ -1,9 +1,10 @@
 'use client';
 
+import { TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useRunnerQueue, useRunners } from '@/lib/api/queries';
+import { useHeartbeat, useRunnerQueue, useRunners } from '@/lib/api/queries';
 import { useCan } from '@/lib/auth/use-can';
 import { formatRelativeTime, formatTimestamp } from '@/lib/utils/format';
 import type { RunnerFilterView, RunnerInstanceStatus, RunnerQueueStatusResponse, RunnerStatus } from '@/types/homer';
@@ -84,7 +85,26 @@ function ConfiguredRunnersCard({ runners }: { runners: RunnerStatus[] }) {
 
 type InstanceRow = RunnerInstanceStatus & { domain: string };
 
-function ExternalInstancesCard({ instances }: { instances: InstanceRow[] }) {
+// The instance's self-reported version, with an exclamation mark when it differs from Homer's.
+// Both sides render as React text and the comparison is exact string equality; a version the
+// instance did not report reads as unknown and is never flagged.
+function InstanceVersion({ version, homerVersion }: { version?: string | null; homerVersion?: string }) {
+  if (!version) return <span className="text-muted-foreground">unknown</span>;
+  const mismatch = !!homerVersion && version !== homerVersion;
+  const tooltip = `Runner ${version} differs from Homer ${homerVersion}`;
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-sm">
+      {version}
+      {mismatch && (
+        <span role="img" aria-label={tooltip} title={tooltip}>
+          <TriangleAlert className="h-4 w-4 text-destructive" aria-hidden="true" />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ExternalInstancesCard({ instances, homerVersion }: { instances: InstanceRow[]; homerVersion?: string }) {
   return (
     <Card>
       <CardHeader><CardTitle>External runner instances</CardTitle></CardHeader>
@@ -95,7 +115,7 @@ function ExternalInstancesCard({ instances }: { instances: InstanceRow[] }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead><TableHead>Domain</TableHead><TableHead>Tags</TableHead>
+                <TableHead>Name</TableHead><TableHead>Domain</TableHead><TableHead>Version</TableHead><TableHead>Tags</TableHead>
                 <TableHead className="text-right">Sessions / concurrency</TableHead>
                 <TableHead>Last seen</TableHead><TableHead>Registered</TableHead><TableHead>State</TableHead>
               </TableRow>
@@ -105,6 +125,7 @@ function ExternalInstancesCard({ instances }: { instances: InstanceRow[] }) {
                 <TableRow key={i.instanceId}>
                   <TableCell className="font-medium">{i.name}</TableCell>
                   <TableCell>{i.domain}</TableCell>
+                  <TableCell><InstanceVersion version={i.version} homerVersion={homerVersion} /></TableCell>
                   <TableCell>{i.tags.join(', ')}</TableCell>
                   <TableCell className="text-right font-mono text-sm">{capacity(i.activeSessions, i.concurrency)}</TableCell>
                   <TableCell>{formatRelativeTime(i.lastSeenAt)}</TableCell>
@@ -126,6 +147,9 @@ export default function RunnersPage() {
   const { isAdmin } = useCan();
   const runners = useRunners(isAdmin);
   const queue = useRunnerQueue(isAdmin);
+  // The Homer version the instances are compared against; the badge in the header already
+  // caches this heartbeat, so the page adds no request of its own.
+  const heartbeat = useHeartbeat();
 
   if (!isAdmin) {
     return <div className="p-6 text-sm text-muted-foreground">You don’t have access to this page.</div>;
@@ -153,7 +177,7 @@ export default function RunnersPage() {
 
       <ConfiguredRunnersCard runners={all} />
 
-      {external.length > 0 && <ExternalInstancesCard instances={instances} />}
+      {external.length > 0 && <ExternalInstancesCard instances={instances} homerVersion={heartbeat.data?.version} />}
 
       <Card>
         <CardHeader><CardTitle>Claim queue</CardTitle></CardHeader>

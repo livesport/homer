@@ -465,15 +465,17 @@ class GrantsEnforcementTest {
 
     /**
      * The runner-state fixture: a configured `ssh` runner, an `external` domain with one live
-     * registered instance, and one pending alias claim. Returns the deps and the instance, so a
-     * golden comparison can name the instance the way an admin sees it.
+     * registered instance (carrying the version it reported), and one pending alias claim.
+     * Returns the deps and the instance, so a golden comparison can name the instance the way an
+     * admin sees it.
      */
     private fun runnerStateDeps(tokens: Map<String, TokenConfig>): Pair<ApiDeps, ExternalRunnerInstance> {
         val queue = mockk<RunnerClaimQueue>(relaxed = true)
         coEvery { queue.pendingSnapshot() } returns listOf(PendingClaim(RunnerFilter.Alias("gpu-box"), enqueuedAtMs = 1_000))
         every { queue.nowMs() } returns 11_000
         val domain = ExternalRunnerDomain("workers", RunnerConfig.External(token = "t".repeat(32)), queue)
-        val instance = domain.register(RegisterInstanceRequest(name = "host-1", tags = listOf("gpu"), concurrency = 2))
+        val instance =
+            domain.register(RegisterInstanceRequest(name = "host-1", tags = listOf("gpu"), concurrency = 2, version = "1.42.0"))
         val config =
             AppConfig(
                 agentsSearchPath = "unused",
@@ -516,7 +518,9 @@ class GrantsEnforcementTest {
             for (path in listOf("/api/v1/runners", "/api/v1/runners/queue")) {
                 val noGrant = client.get(path) { header(HttpHeaders.Authorization, "Bearer run-token") }
                 assertEquals(HttpStatusCode.Forbidden, noGrant.status, "expected 403 for a no-grant token on $path")
-                assertFalse(noGrant.bodyAsText().contains("gpu-box"), "a denial must not leak the runner list")
+                val noGrantBody = noGrant.bodyAsText()
+                assertFalse(noGrantBody.contains("gpu-box"), "a denial must not leak the runner list")
+                assertFalse(noGrantBody.contains("1.42.0"), "a denial must not leak an instance version")
 
                 // An agent-level read grant does not unlock server-level state.
                 val narrow = client.get(path) { header(HttpHeaders.Authorization, "Bearer read-token") }
@@ -524,7 +528,13 @@ class GrantsEnforcementTest {
 
                 val anonymous = client.get(path)
                 assertEquals(HttpStatusCode.Unauthorized, anonymous.status, "expected 401 without a credential on $path")
+
+                val admin = client.get(path) { header(HttpHeaders.Authorization, "Bearer admin-token") }
+                assertEquals(HttpStatusCode.OK, admin.status, "expected 200 for an admin token on $path")
             }
+
+            val adminBody = client.get("/api/v1/runners") { header(HttpHeaders.Authorization, "Bearer admin-token") }.bodyAsText()
+            assertTrue(adminBody.contains("\"version\": \"1.42.0\""), "an admin sees the registered version: $adminBody")
         }
 
     @Test
@@ -600,6 +610,7 @@ class GrantsEnforcementTest {
                                             lastSeenAt = instance.lastSeenAt / 1000,
                                             registeredAt = instance.registeredAt / 1000,
                                             draining = false,
+                                            version = "1.42.0",
                                         ),
                                     ),
                             ),
