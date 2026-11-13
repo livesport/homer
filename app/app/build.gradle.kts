@@ -127,7 +127,7 @@ tasks.test {
     useJUnitPlatform()
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     jvmArgs("-Dnet.bytebuddy.experimental=true")
-    maxHeapSize = "2g"
+    maxHeapSize = "3g"
 
     // Tests resolve repo files against this (homer.app.fixtures.repoRoot), under the name the
     // architecture module uses.
