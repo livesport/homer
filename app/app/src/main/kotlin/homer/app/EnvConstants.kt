@@ -62,6 +62,17 @@ object EnvConstants {
     const val PARENT_PROCESS_HEADER = "X-Homer-Parent-Process-Id"
 
     /**
+     * Request header carrying a run's [CALLBACK_TOKEN] to `GET /api/v1/callback/whoami`,
+     * read before `Authorization`: at an egress proxy that header belongs to the upstream.
+     * See ADR-0110.
+     */
+    const val CALLBACK_TOKEN_HEADER = "X-Homer-Callback-Token"
+
+    /** Response headers of `GET /api/v1/callback/whoami`: the identified run's agent and id. See ADR-0110. */
+    const val AGENT_HEADER = "X-Homer-Agent"
+    const val PROCESS_ID_HEADER = "X-Homer-Process-Id"
+
+    /**
      * LangGraph thread id carried by a completion continuation from its `params`
      * into the resumed target run, so the parked graph resumes the right thread.
      * See ADR-0023.

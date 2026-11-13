@@ -961,6 +961,69 @@ Single-resource denials return `404`, identical to the not-found response
 — existence is never revealed to a caller who can't see the row. See
 [ADR-0038](../docs/adr/0038-process-ownership.md).
 
+### Run identity for egress proxies
+
+A deployment that keeps upstream credentials out of the runs puts a
+credential-injecting proxy between the runs and the upstream APIs — for
+example an envoy sidecar on the runner that adds the token on loopback. Every
+run on that runner shares the network, so the proxy cannot tell which agent
+sent a request, and a header the run sets itself proves nothing.
+`GET /api/v1/callback/whoami` gives the proxy an identity the run cannot
+forge: it resolves the run's own `HMR_CALLBACK_TOKEN` to the run holding it.
+Homer only says *who*; what that agent may reach is the proxy's
+configuration. Nothing changes for a deployment that never calls it.
+
+| Request (any method) | Response |
+|---------|----------|
+| Token in `X-Homer-Callback-Token`, else `Authorization: Bearer <token>` | `200 {"processId": 42, "agent": "reviewer"}`, and `X-Homer-Process-Id: 42`, `X-Homer-Agent: reviewer` as response headers |
+| No token, an unknown one, or one of a run that has ended | `401`, one identical body for all three |
+
+- **A token is valid while its run is working.** It is minted when the run
+  starts, stops identifying the run when the run ends, and lives in memory: a
+  server restart invalidates every token. A proxy that fails closed refuses
+  the affected runs' requests until they end.
+- **Carry the token in its own header.** At the proxy, `Authorization`
+  belongs to the upstream and is overwritten with the real credential. An MCP
+  config for an upstream MCP server behind the proxy sends it with
+  `"headers": {"X-Homer-Callback-Token": "${HMR_CALLBACK_TOKEN:-}"}` (the `:-`
+  default keeps the config valid where the variable is unset); shell tools use
+  their extra-header settings, e.g. git's `http.extraHeader`. Only `whoami`
+  reads this header: Homer's own callback routes and `/mcp/questions` still
+  take the token as `Authorization: Bearer`, so leave those configs as they are.
+- **The proxy strips identity headers.** Remove the client's
+  `X-Homer-Callback-Token`, `X-Homer-Agent` and `X-Homer-Process-Id` before
+  forwarding, so neither the token reaches an upstream nor a run can claim an
+  identity itself.
+- **Limit: runs that share one OS user can read each other's environment.**
+  A run could present another working run's token. The token stops working
+  when that run ends; separating runs (a user per run, a pod per run, or
+  runner pools per trust level) is the deployment's job.
+
+With envoy, an `ext_authz` HTTP service does the lookup and denies on `401`. Its check
+request reuses the proxied request's method, which is why the route answers any method:
+
+```yaml
+- name: envoy.filters.http.ext_authz
+  typed_config:
+    "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+    transport_api_version: V3
+    failure_mode_allow: false
+    http_service:
+      server_uri: { uri: "http://homer:8080", cluster: homer, timeout: 2s }
+      path_override: /api/v1/callback/whoami
+      authorization_request:
+        allowed_headers: { patterns: [{ exact: x-homer-callback-token }] }
+      authorization_response:
+        allowed_upstream_headers:
+          patterns: [{ exact: x-homer-agent }, { exact: x-homer-process-id }]
+```
+
+A per-route RBAC filter after it then matches on `x-homer-agent`. A Lua
+filter that calls the route with `httpCall` and only labels the request
+(`x-homer-agent: anonymous` on `401`) instead of denying lets the proxy log
+what a policy would refuse before it enforces it. See
+[ADR-0110](../docs/adr/0110-run-identity-for-egress-proxies.md).
+
 ### Bearer Authentication
 
 Enables token-based authentication. Each named token carries a `role` and/or

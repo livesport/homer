@@ -411,6 +411,29 @@ class QuestionsServiceTest {
         }
 
     @Test
+    fun `re-registering a process retires its previous token`() =
+        runTest {
+            val service = service()
+            val first = service.registerProcess(1, "agent-a")
+            val second = service.registerProcess(1, "agent-a")
+
+            assertNull(service.resolveToken(first))
+            assertEquals(1, service.resolveToken(second))
+        }
+
+    @Test
+    fun `resolveToken finds each of many registrations and only after its removal stops`() =
+        runTest {
+            val service = service()
+            val tokens = (1..200).associateWith { service.registerProcess(it, "agent-$it") }
+
+            tokens.forEach { (processId, token) -> assertEquals(processId, service.resolveToken(token)) }
+            service.removeForProcess(100)
+            assertNull(service.resolveToken(tokens.getValue(100)))
+            assertEquals(101, service.resolveToken(tokens.getValue(101)))
+        }
+
+    @Test
     fun `resolveToken still resolves after expireForProcess`() =
         runTest {
             val service = service()

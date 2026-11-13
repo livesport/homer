@@ -27,6 +27,7 @@ import homer.app.models.SrcType
 import homer.app.models.TagValidation
 import homer.app.models.TakeRunMessagesResponse
 import homer.app.models.TakenRunMessage
+import homer.app.models.WhoamiResponse
 import homer.app.services.ArtifactTooLargeException
 import homer.app.services.DispatchGroupService
 import homer.app.services.HookEvent
@@ -41,6 +42,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
@@ -75,6 +77,7 @@ internal fun Route.callbackRoutes(deps: ApiDeps) {
     callbackJoinRoutes(deps)
     callbackResultRoutes(deps)
     callbackMessageRoutes(deps)
+    callbackWhoamiRoutes(deps)
 }
 
 /** `POST /api/v1/callback/questions` and `GET …/{id}`: asking a question and polling its answer. */
@@ -427,6 +430,30 @@ private fun Route.callbackMessageRoutes(deps: ApiDeps) {
 }
 
 /**
+ * `/api/v1/callback/whoami`: the run holding the presented callback token, for an egress proxy
+ * that decides per agent. A missing, unknown or ended run's token gets one identical `401`.
+ * Any method: envoy's `ext_authz` HTTP check reuses the proxied request's method. See ADR-0110.
+ */
+private fun Route.callbackWhoamiRoutes(deps: ApiDeps) {
+    with(deps) {
+        route("/api/v1/callback/whoami") {
+            handle {
+                val token = call.request.headers[EnvConstants.CALLBACK_TOKEN_HEADER]?.takeIf { it.isNotBlank() } ?: call.bearerToken()
+                val processId = token?.takeIf { it.isNotEmpty() }?.let { questionsService.resolveToken(it) }
+                val registration = processId?.let { questionsService.registrationFor(it) }
+                if (processId == null || registration == null || registration.closed) {
+                    call.respond(HttpStatusCode.Unauthorized, ErrorResponse(msg = "Invalid callback token"))
+                    return@handle
+                }
+                call.response.header(EnvConstants.AGENT_HEADER, registration.agentName)
+                call.response.header(EnvConstants.PROCESS_ID_HEADER, processId.toString())
+                call.respond(WhoamiResponse(processId = processId, agent = registration.agentName))
+            }
+        }
+    }
+}
+
+/**
  * The params of a continuation run, the resumed parent: [continueParams] plus, when given, the
  * LangGraph [continueThread] the parent resumes. See ADR-0023.
  */
@@ -554,9 +581,7 @@ private suspend fun <T> ProcessManager.killStartedOnFailure(block: suspend (star
  * (a restart wipes the registry, so helpers blocked across one land here).
  */
 private suspend fun ApplicationCall.resolveCallbackProcess(questionsService: QuestionsService): Int? {
-    val token =
-        request.headers[HttpHeaders.Authorization]
-            ?.let { if (it.startsWith("Bearer ", ignoreCase = true)) it.substring(7).trim() else null }
+    val token = bearerToken()
     if (token.isNullOrEmpty()) {
         respond(HttpStatusCode.Unauthorized, ErrorResponse(msg = "Missing callback token"))
         return null
@@ -568,3 +593,8 @@ private suspend fun ApplicationCall.resolveCallbackProcess(questionsService: Que
     }
     return processId
 }
+
+/** The token of an `Authorization: Bearer <token>` header, or null. */
+private fun ApplicationCall.bearerToken(): String? =
+    request.headers[HttpHeaders.Authorization]
+        ?.let { if (it.startsWith("Bearer ", ignoreCase = true)) it.substring(7).trim() else null }
