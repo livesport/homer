@@ -5,6 +5,11 @@
 ### Homer
 
 - **Added: `/api/v1/callback/whoami`** — Resolves a run's callback token to its process id and agent, so an egress proxy can apply a per-agent policy. See [ADR-0110](docs/adr/0110-run-identity-for-egress-proxies.md).
+- **Added: runner instance `version` on `GET /api/v1/runners`** — Each pull-mode instance carries the version it registered with, `null` when it reported none; a `version` outside the tag shape is refused at registration with `422`.
+
+### Console
+
+- **Added: version column and mismatch marker on the Runners page** — Each external runner instance shows its reported version, with an exclamation mark when it differs from the Homer server's.
 
 ## [1.42.0] - 2026-11-13
 

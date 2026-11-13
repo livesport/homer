@@ -11,10 +11,14 @@ import homer.app.models.AgentReloadResult
 import homer.app.models.AppConfig
 import homer.app.models.AuthConfig
 import homer.app.models.Grant
+import homer.app.models.RunnerConfig
 import homer.app.models.Server
 import homer.app.models.TokenConfig
 import homer.app.runners.RunnerRegistry
+import homer.app.runners.external.ExternalRunnerDomain
+import homer.app.runners.external.RegisterInstanceRequest
 import homer.app.runners.kubernetes.SweepStatus
+import homer.app.runners.queue.RunnerClaimQueue
 import homer.app.services.AgentFilesService
 import homer.app.services.AgentsService
 import homer.app.services.Authorizer
@@ -442,23 +446,38 @@ class GrantsEnforcementTest {
     fun `runner status endpoints require admin`() =
         testApplication {
             val tokens = mapOf("runner" to runToken, "root" to adminToken)
-            val registry = RunnerRegistry(entries = emptyList())
+            // One registered instance, so the version a runner reported is on the payload the gate
+            // has to withhold: ADR-0077 keeps the whole instance list admin-only.
+            val queue = RunnerClaimQueue(maxPending = 10)
+            val domain = ExternalRunnerDomain("workers", RunnerConfig.External(token = "t".repeat(32)), queue)
+            domain.register(RegisterInstanceRequest(name = "host-1", version = "1.42.0"))
+            val registry = RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
             val d =
                 deps(authorizerFor(tokens)).also {
                     every { it.runnerRegistry } returns registry
                     every { it.config } returns
-                        AppConfig(agentsSearchPath = "unused", workspaceRootPath = "unused", databasePath = "unused")
+                        AppConfig(
+                            agentsSearchPath = "unused",
+                            workspaceRootPath = "unused",
+                            databasePath = "unused",
+                            runners = mapOf("workers" to RunnerConfig.External(token = "t".repeat(32))),
+                        )
                 }
             application { installGrantsApp(tokens, d) }
 
             for (path in listOf("/api/v1/runners", "/api/v1/runners/queue")) {
                 val scoped = client.get(path) { header(HttpHeaders.Authorization, "Bearer run-token") }
                 assertEquals(HttpStatusCode.Forbidden, scoped.status, "expected 403 for scoped token on $path")
-                assertEquals(false, scoped.bodyAsText().contains("local"), "a denial must not leak the runner list")
+                val scopedBody = scoped.bodyAsText()
+                assertEquals(false, scopedBody.contains("local"), "a denial must not leak the runner list")
+                assertEquals(false, scopedBody.contains("1.42.0"), "a denial must not leak an instance version")
 
                 val admin = client.get(path) { header(HttpHeaders.Authorization, "Bearer admin-token") }
                 assertEquals(HttpStatusCode.OK, admin.status, "expected 200 for admin token on $path")
             }
+
+            val adminBody = client.get("/api/v1/runners") { header(HttpHeaders.Authorization, "Bearer admin-token") }.bodyAsText()
+            assertTrue(adminBody.contains("\"version\": \"1.42.0\""), "an admin sees the registered version: $adminBody")
         }
 
     @Test

@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import RunnersPage from './page';
 
-vi.mock('@/lib/api/queries', () => ({ useRunners: vi.fn(), useRunnerQueue: vi.fn() }));
-import { useRunners, useRunnerQueue } from '@/lib/api/queries';
+vi.mock('@/lib/api/queries', () => ({ useRunners: vi.fn(), useRunnerQueue: vi.fn(), useHeartbeat: vi.fn() }));
+import { useRunners, useRunnerQueue, useHeartbeat } from '@/lib/api/queries';
 vi.mock('@/lib/auth/use-can', () => ({ useCan: vi.fn() }));
 import { useCan } from '@/lib/auth/use-can';
 import { fakeCapabilities } from '@/lib/auth/capabilities-test-utils';
@@ -17,13 +17,28 @@ function mockRunners(value: object) {
 function mockQueue(value: object) {
   vi.mocked(useRunnerQueue).mockReturnValue(value as ReturnType<typeof useRunnerQueue>);
 }
+function mockHeartbeat(value: object) {
+  vi.mocked(useHeartbeat).mockReturnValue(value as ReturnType<typeof useHeartbeat>);
+}
 
 const now = Math.floor(Date.now() / 1000);
+
+/** One external instance registered with [version] (undefined = the field the server omits for a non-reporting instance). */
+function runnersWithInstance(version?: string | null) {
+  return {
+    data: { runners: [{ alias: 'workers', kind: 'external', tags: [], concurrency: null, inUse: 0, instances: [
+      { instanceId: 'i-1', name: 'host-1', tags: [], concurrency: 1, activeSessions: 0,
+        lastSeenAt: now - 5, registeredAt: now - 60, draining: false, version },
+    ] }] },
+    isLoading: false, error: null,
+  };
+}
 
 describe('RunnersPage', () => {
   beforeEach(() => {
     mockCan(true);
     mockQueue({ data: { pending: 0, oldestAgeSec: null, byFilter: [] }, isLoading: false, error: null });
+    mockHeartbeat({ data: { status: 'ok', version: '1.42.0' }, isLoading: false, error: null });
   });
 
   it('lists configured runners with kind and permits in use', () => {
@@ -53,6 +68,42 @@ describe('RunnersPage', () => {
     expect(screen.getByText('host-1')).toBeInTheDocument();
     expect(screen.getByText('gpu, linux')).toBeInTheDocument();
     expect(screen.getByText('Draining')).toBeInTheDocument();
+  });
+
+  it('shows the instance version and flags a mismatch with Homer', () => {
+    mockRunners(runnersWithInstance('1.41.0'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.41.0')).toBeInTheDocument();
+    expect(screen.getByLabelText('Runner 1.41.0 differs from Homer 1.42.0')).toBeInTheDocument();
+  });
+
+  it('shows no indicator when the instance version matches Homer', () => {
+    mockRunners(runnersWithInstance('1.42.0'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.42.0')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
+  });
+
+  it('shows unknown, without an indicator, for an instance that reported no version', () => {
+    mockRunners(runnersWithInstance(null));
+    render(<RunnersPage />);
+    expect(screen.getByText('unknown')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
+  });
+
+  it('renders a version carrying markup as inert text', () => {
+    mockRunners(runnersWithInstance('<img src=x onerror=alert(1)>'));
+    const { container } = render(<RunnersPage />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+  });
+
+  it('shows no indicator while the heartbeat is unavailable', () => {
+    mockHeartbeat({ data: undefined, isLoading: false, error: null });
+    mockRunners(runnersWithInstance('1.41.0'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.41.0')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
   });
 
   it('says so when no external instance is registered and nothing is pending', () => {

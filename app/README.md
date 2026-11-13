@@ -395,7 +395,8 @@ live registered instances. See [ADR-0066](../docs/adr/0066-external-pull-runners
           "activeSessions": 1,
           "lastSeenAt": 1758000000,
           "registeredAt": 1757999000,
-          "draining": false
+          "draining": false,
+          "version": "1.42.0"
         }
       ]
     }
@@ -404,7 +405,9 @@ live registered instances. See [ADR-0066](../docs/adr/0066-external-pull-runners
 ```
 
 `concurrency: null` means unbounded; `instances` is `null` on non-external
-rows. `lastSeenAt` / `registeredAt` are Unix epoch seconds. The `local` row is
+rows. `lastSeenAt` / `registeredAt` are Unix epoch seconds. `version` is the
+version the instance reported when it registered, and `null` when it reported
+none. The `local` row is
 absent when `server.localRunner.enabled` is `false` (see
 [ADR-0095](../docs/adr/0095-local-runner-can-be-turned-off.md)).
 
