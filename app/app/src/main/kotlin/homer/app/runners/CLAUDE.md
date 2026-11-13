@@ -143,6 +143,14 @@ warning is the only trace of the missing tail. A graceful stop rides two more op
 stops the running command — SIGINT its process group, kill after the grace its
 `cmd` carried — with the `cmd` result reported as usual; the reference instance
 clamps the grace to its own bound, so a peer-supplied value cannot pin its reap.
+At registration a domain validates an instance's optional `name` and `version`
+against the same tag shape (`RunnerTagValidation.PATTERN`): the `version` is a
+build tag, not full semver, so a compliant-semver value with build metadata
+(`1.42.0+build.5`) is refused with `422` — a deliberate restriction, recorded
+here in place of an ADR amendment. The rejected alternative was bound-only
+validation (accept any string, cap the length, sanitize at render): it would
+have put runner-written text into logs and the console admins' status view
+verbatim, where the tag shape makes the stored value safe as-is (§12).
 The routes are mounted outside `authenticate(...)` next to `callbackRoutes`: a
 domain token is a separate principal class (§12). The registry runs a
 heartbeat sweeper that drops silent instances and fails their runs.

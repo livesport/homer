@@ -30,6 +30,7 @@ data class RunnerInstanceStatus(
     val lastSeenAt: Long, // epoch seconds
     val registeredAt: Long, // epoch seconds
     val draining: Boolean,
+    val version: String? = null, // the version the instance registered with; null when it reported none
 )
 
 /** GET /api/v1/runners/queue — see app/README.md. */

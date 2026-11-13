@@ -214,6 +214,20 @@ class RunnerProtocolRoutesTest {
         }
 
     @Test
+    fun `register refuses a malformed version with 422 and registers no instance for it`() =
+        testApplication {
+            mount()
+            val refused = register(body = """{"name":"host-1","version":"<img src=x onerror=alert(1)>"}""")
+            assertEquals(HttpStatusCode.UnprocessableEntity, refused.status)
+            val body = refused.bodyAsText()
+            assertTrue(body.contains("version must match"), "the refusal names the shape it wanted: $body")
+            assertFalse(body.contains("onerror"), "the refusal must not echo the raw value: $body")
+            assertTrue(workers.instances().isEmpty(), "a rejected version registers no instance, so no status row can list it")
+
+            assertEquals(HttpStatusCode.UnprocessableEntity, register(body = """{"version":"${"v".repeat(65)}"}""").status)
+        }
+
+    @Test
     fun `a second live registration of the same name is 422 and the body carries no token`() =
         testApplication {
             mount()

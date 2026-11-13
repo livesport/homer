@@ -356,8 +356,10 @@ process id.
 Navigate to **Runners** from the sidebar (admin only) for a read-only
 snapshot of the claim queue system: a table of every configured runner
 with its kind, tags and permits in use; a table of each external
-runner's registered pull-mode instances, with their tags, session
-capacity, last-seen and registered times, and a Draining badge for an
+runner's registered pull-mode instances, with the version each reported
+(an exclamation mark when it differs from the Homer server's, `unknown`
+when it reported none), their tags, session capacity, last-seen and
+registered times, and a Draining badge for an
 instance winding down; and a breakdown of runs currently waiting for a
 runner, by the alias or tags they need, with the pending count and the
 oldest wait. Both endpoints poll every 5 s. No actions — this page

@@ -220,7 +220,7 @@ Output:
 | GET | `/api/v1/livez` | Kubernetes-style liveness probe — always `200`. Wire `livenessProbe` here. | Not required |
 | GET | `/api/v1/readyz` | Kubernetes-style readiness probe — `200` in steady state, `503` once drain begins. Wire `readinessProbe` and any reverse-proxy upstream check here. | Not required |
 | GET | `/api/v1/health` | Rich JSON status (runners + sweep snapshot + `maintenance`) for the console. Configured runners' **aliases** (in the runner list and the sweep snapshot's `runnerAlias`) are admin-only (the built-in `local` row keeps its fixed, non-sensitive alias): a non-admin caller gets `alias: null` with the generic backend `type` — the same classification as the status API. In the sweep snapshot, `ranAt` is the time the boot sweep last ran as Unix epoch **seconds**, and `deletedJobs` lists the orphan Jobs a `workload: Job` runner deleted (`null` when no such runner was swept; its `runnerAlias` is admin-only like the pods'). `maintenance` is the admin maintenance flag (see [below](#getpost-apiv1maintenance)). **Not** a probe — stays `200` during drain. | Any authenticated caller (open under `unsecured`) |
-| POST | `/api/v1/runner/register` | Register a pull-mode runner instance in the domain the token belongs to (`201`; `422` bad tags/concurrency, a non-blank `version` not matching the tag shape, or a `name` already held by a live instance of the domain; `429` at `maxInstances`). See [`SERVER.md`](SERVER.md) § *Runner protocol reference*. | Runner domain token (`runners.*.token`); `401` for every `apiAuth` credential |
+| POST | `/api/v1/runner/register` | Register a pull-mode runner instance in the domain the token belongs to (`201`; `422` bad tags/concurrency, a `name` or a non-blank `version` outside the tag shape, or a `name` already held by a live instance of the domain; `429` at `maxInstances`). See [`SERVER.md`](SERVER.md) § *Runner protocol reference*. | Runner domain token (`runners.*.token`); `401` for every `apiAuth` credential |
 | DELETE | `/api/v1/runner/instances/{id}` | Deregister an instance (`204`; `404` unknown or foreign id). | Runner domain token |
 | POST | `/api/v1/runner/instances/{id}/claim` | Long-poll for a run to execute (`200` session, `204` nothing or the instance is draining, `404` unknown or foreign instance id, `429` too many polls). | Runner domain token |
 | POST | `/api/v1/runner/sessions/{sid}/next` | Report the previous op's result and long-poll for the next op (`200` op, `204` nothing, `400` malformed body, `404` unknown session, `429` more than 3 polls open on the session — the reported result is still recorded). | Runner domain token |
@@ -395,7 +395,8 @@ live registered instances. See [ADR-0066](../docs/adr/0066-external-pull-runners
           "activeSessions": 1,
           "lastSeenAt": 1758000000,
           "registeredAt": 1757999000,
-          "draining": false
+          "draining": false,
+          "version": "1.42.0"
         }
       ]
     }
@@ -404,7 +405,9 @@ live registered instances. See [ADR-0066](../docs/adr/0066-external-pull-runners
 ```
 
 `concurrency: null` means unbounded; `instances` is `null` on non-external
-rows. `lastSeenAt` / `registeredAt` are Unix epoch seconds. The `local` row is
+rows. `lastSeenAt` / `registeredAt` are Unix epoch seconds. `version` is the
+version the instance reported when it registered, and `null` when it reported
+none. The `local` row is
 absent when `server.localRunner.enabled` is `false` (see
 [ADR-0095](../docs/adr/0095-local-runner-can-be-turned-off.md)).
 

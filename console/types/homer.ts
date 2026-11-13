@@ -486,6 +486,8 @@ export interface RunnerInstanceStatus {
   lastSeenAt: number;
   registeredAt: number;
   draining: boolean;
+  // The version the instance registered with; null when it reported none.
+  version?: string | null;
 }
 
 export interface RunnerStatus {

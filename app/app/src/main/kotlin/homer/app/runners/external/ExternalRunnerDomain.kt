@@ -81,11 +81,12 @@ class ExternalRunnerDomain(
         }
         queue.registerConsumer(instance)
         logger.info(
-            "Runner '{}': instance '{}' registered with tags {} concurrency {}",
+            "Runner '{}': instance '{}' registered with tags {} concurrency {} version {}",
             alias,
             instance.name,
             tags.sorted(),
             request.concurrency,
+            instance.version,
         )
         return instance
     }
@@ -107,6 +108,10 @@ class ExternalRunnerDomain(
      * instance writes it, so an unbounded one would be stored and later shown to operators.
      */
     private fun validatedVersion(requested: String?): String? {
+        // The version is logged with the registration and shown to console admins, so an
+        // unvalidated one is both a log-injection vector and unbounded runner-written text. Same
+        // shape as a tag: safe to log and render verbatim, and the rejection never echoes the raw
+        // value. §12.
         val version = requested?.takeIf { it.isNotBlank() }
         if (version != null && !RunnerTagValidation.PATTERN.matches(version)) {
             throw RunnerRegistrationRejectedException(alias, "version must match ${RunnerTagValidation.PATTERN}")
