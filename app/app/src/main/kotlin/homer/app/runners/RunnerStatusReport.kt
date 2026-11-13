@@ -8,6 +8,7 @@ import homer.app.models.RunnerInstanceStatus
 import homer.app.models.RunnerQueueGroup
 import homer.app.models.RunnerQueueStatusResponse
 import homer.app.models.RunnerStatus
+import homer.app.models.RunnerTagValidation
 import homer.app.models.RunnersStatusResponse
 import homer.app.runners.external.ExternalRunnerDomain
 import homer.app.runners.local.LocalRunner
@@ -32,10 +33,15 @@ fun runnerType(
         null -> if (alias == LocalRunner.ALIAS) "local" else "unknown"
     }
 
-/** Operator view of every configured runner; admin-only, never carries a token or env value. See ADR-0066. */
+/**
+ * Operator view of every configured runner; never carries a token or env value. [namesVisible]
+ * false is the redacted view a `read` grant on `*` gets: aliases and instance names are
+ * withheld, capacity and counts stay. See ADR-0066, ADR-0077, ADR-0111.
+ */
 fun runnersStatus(
     config: AppConfig,
     registry: RunnerRegistry,
+    namesVisible: Boolean,
 ): RunnersStatusResponse {
     val inUse =
         registry.queue
@@ -49,9 +55,10 @@ fun runnersStatus(
             if (local.enabled) {
                 add(
                     RunnerStatus(
+                        // Homer assigns the built-in alias, so it survives the redacted view.
                         LocalRunner.ALIAS,
                         runnerType(config, LocalRunner.ALIAS),
-                        local.tags.sorted(),
+                        visibleTags(local.tags, namesVisible),
                         local.concurrency,
                         inUse[LocalRunner.ALIAS] ?: 0,
                     ),
@@ -61,21 +68,27 @@ fun runnersStatus(
                 add(
                     when (cfg) {
                         is RunnerConfig.Ssh -> {
-                            RunnerStatus(alias, runnerType(config, alias), cfg.tags.sorted(), cfg.concurrency, inUse[alias] ?: 0)
+                            RunnerStatus(
+                                visibleAlias(alias, namesVisible),
+                                runnerType(config, alias),
+                                visibleTags(cfg.tags, namesVisible),
+                                cfg.concurrency,
+                                inUse[alias] ?: 0,
+                            )
                         }
 
                         is RunnerConfig.Kubernetes -> {
                             RunnerStatus(
-                                alias,
+                                visibleAlias(alias, namesVisible),
                                 runnerType(config, alias),
-                                cfg.tags.sorted(),
+                                visibleTags(cfg.tags, namesVisible),
                                 cfg.concurrency,
                                 inUse[alias] ?: 0,
                             )
                         }
 
                         is RunnerConfig.External -> {
-                            externalRunnerStatus(alias, runnerType(config, alias), domains[alias])
+                            externalRunnerStatus(alias, runnerType(config, alias), domains[alias], namesVisible)
                         }
                     },
                 )
@@ -84,15 +97,41 @@ fun runnersStatus(
     return RunnersStatusResponse(rows)
 }
 
+/** The alias a response carries: null in a redacted view, where an operator-chosen name is withheld. See ADR-0077. */
+private fun visibleAlias(
+    alias: String,
+    namesVisible: Boolean,
+): String? = alias.takeIf { namesVisible }
+
+/**
+ * The tags a response carries. An admin sees the configured ones; a redacted view re-checks
+ * every tag at the serializer and drops a value that fails [RunnerTagValidation], rather than
+ * echoing agent-written text (ADR-0047 rule 2).
+ */
+private fun visibleTags(
+    tags: Collection<String>,
+    namesVisible: Boolean,
+): List<String> =
+    if (namesVisible) {
+        tags.sorted()
+    } else {
+        tags
+            .toSet()
+            .filter { RunnerTagValidation.PATTERN.matches(it) }
+            .take(RunnerTagValidation.MAX_TAGS)
+            .sorted()
+    }
+
 /** An `!<external>` domain's row: no tags or concurrency of its own, one entry per registered instance, oldest first. */
 private fun externalRunnerStatus(
     alias: String,
     kind: String,
     domain: ExternalRunnerDomain?,
+    namesVisible: Boolean,
 ): RunnerStatus {
     val instances = domain?.instances().orEmpty().sortedBy { it.registeredAt }
     return RunnerStatus(
-        alias = alias,
+        alias = visibleAlias(alias, namesVisible),
         kind = kind,
         tags = emptyList(),
         concurrency = null,
@@ -100,9 +139,9 @@ private fun externalRunnerStatus(
         instances =
             instances.map {
                 RunnerInstanceStatus(
-                    instanceId = it.id,
-                    name = it.name,
-                    tags = it.tags.sorted(),
+                    instanceId = it.id.takeIf { namesVisible },
+                    name = it.name.takeIf { namesVisible },
+                    tags = visibleTags(it.tags, namesVisible),
                     concurrency = it.declaredConcurrency,
                     activeSessions = it.inUse,
                     lastSeenAt = it.lastSeenAt / 1000,
@@ -113,10 +152,11 @@ private fun externalRunnerStatus(
     )
 }
 
-/** Pending claims grouped by filter, oldest group first; ages clamp at 0. */
+/** Pending claims grouped by filter, oldest group first; ages clamp at 0. [namesVisible] redacts an alias filter like [runnersStatus]. */
 fun runnerQueueStatus(
     pending: List<PendingClaim>,
     nowMs: Long,
+    namesVisible: Boolean,
 ): RunnerQueueStatusResponse {
     fun ageSec(enqueuedAtMs: Long) = ((nowMs - enqueuedAtMs) / 1000).coerceAtLeast(0)
     val groups =
@@ -126,8 +166,8 @@ fun runnerQueueStatus(
                 RunnerQueueGroup(
                     filter =
                         when (filter) {
-                            is RunnerFilter.Alias -> RunnerFilterView(alias = filter.alias)
-                            is RunnerFilter.Tags -> RunnerFilterView(tags = filter.tags.sorted())
+                            is RunnerFilter.Alias -> RunnerFilterView(alias = visibleAlias(filter.alias, namesVisible))
+                            is RunnerFilter.Tags -> RunnerFilterView(tags = visibleTags(filter.tags, namesVisible))
                         },
                     pending = claims.size,
                     oldestAgeSec = ageSec(claims.minOf { it.enqueuedAtMs }),

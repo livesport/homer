@@ -11,13 +11,31 @@ import homer.app.models.AgentReloadResult
 import homer.app.models.AppConfig
 import homer.app.models.AuthConfig
 import homer.app.models.Grant
+import homer.app.models.MaintenanceResponse
+import homer.app.models.PodPhase
+import homer.app.models.ProcessInfo
+import homer.app.models.ProcessStatus
+import homer.app.models.RunnerConfig
+import homer.app.models.RunnerFilter
+import homer.app.models.RunnerInstanceStatus
+import homer.app.models.RunnerState
+import homer.app.models.RunnerStatus
+import homer.app.models.RunnersStatusResponse
 import homer.app.models.Server
+import homer.app.models.SshAuth
 import homer.app.models.TokenConfig
 import homer.app.runners.RunnerRegistry
+import homer.app.runners.external.ExternalRunnerDomain
+import homer.app.runners.external.ExternalRunnerInstance
+import homer.app.runners.external.RegisterInstanceRequest
 import homer.app.runners.kubernetes.SweepStatus
+import homer.app.runners.queue.PendingClaim
+import homer.app.runners.queue.RunnerClaimQueue
 import homer.app.services.AgentFilesService
 import homer.app.services.AgentsService
 import homer.app.services.Authorizer
+import homer.app.services.ProcessManager
+import homer.app.services.QuestionsService
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -41,8 +59,10 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.serialization.encodeToString
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import kotlin.test.assertEquals
@@ -438,27 +458,228 @@ class GrantsEnforcementTest {
             assertEquals(HttpStatusCode.OK, res.status)
         }
 
+    // --- runner state reads: admin, or a read grant on `*` (ADR-0111) ---
+
+    /** READ on every agent — the grant that unlocks the server-level runner state. */
+    private val starReadToken = TokenConfig(token = "star-read-token", grants = listOf(Grant(listOf("*"), listOf(Action.READ))))
+
+    /**
+     * The runner-state fixture: a configured `ssh` runner, an `external` domain with one live
+     * registered instance, and one pending alias claim. Returns the deps and the instance, so a
+     * golden comparison can name the instance the way an admin sees it.
+     */
+    private fun runnerStateDeps(tokens: Map<String, TokenConfig>): Pair<ApiDeps, ExternalRunnerInstance> {
+        val queue = mockk<RunnerClaimQueue>(relaxed = true)
+        coEvery { queue.pendingSnapshot() } returns listOf(PendingClaim(RunnerFilter.Alias("gpu-box"), enqueuedAtMs = 1_000))
+        every { queue.nowMs() } returns 11_000
+        val domain = ExternalRunnerDomain("workers", RunnerConfig.External(token = "t".repeat(32)), queue)
+        val instance = domain.register(RegisterInstanceRequest(name = "host-1", tags = listOf("gpu"), concurrency = 2))
+        val config =
+            AppConfig(
+                agentsSearchPath = "unused",
+                workspaceRootPath = "unused",
+                databasePath = "unused",
+                runners =
+                    mapOf(
+                        "gpu-box" to
+                            RunnerConfig.Ssh(
+                                host = "h",
+                                user = "u",
+                                auth = SshAuth.Agent,
+                                remoteWorkspaceRoot = "/remote",
+                                tags = listOf("gpu"),
+                                concurrency = 2,
+                            ),
+                        "workers" to RunnerConfig.External(token = "t".repeat(32)),
+                    ),
+            )
+        val d =
+            deps(authorizerFor(tokens)).also {
+                every { it.config } returns config
+                every { it.runnerRegistry } returns
+                    RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
+                every { it.maintenanceModeService } returns
+                    mockk(relaxed = true) {
+                        every { snapshot() } returns MaintenanceResponse(enabled = false, since = null, queued = 0)
+                    }
+            }
+        return d to instance
+    }
+
+    // ADR-0047 rule 8: every denial path of the widened gate is asserted.
     @Test
-    fun `runner status endpoints require admin`() =
+    fun `runner state reads deny a caller without a read grant on star`() =
         testApplication {
-            val tokens = mapOf("runner" to runToken, "root" to adminToken)
-            val registry = RunnerRegistry(entries = emptyList())
+            val tokens = mapOf("runner" to runToken, "reader" to readToken, "root" to adminToken)
+            application { installGrantsApp(tokens, runnerStateDeps(tokens).first) }
+
+            for (path in listOf("/api/v1/runners", "/api/v1/runners/queue")) {
+                val noGrant = client.get(path) { header(HttpHeaders.Authorization, "Bearer run-token") }
+                assertEquals(HttpStatusCode.Forbidden, noGrant.status, "expected 403 for a no-grant token on $path")
+                assertFalse(noGrant.bodyAsText().contains("gpu-box"), "a denial must not leak the runner list")
+
+                // An agent-level read grant does not unlock server-level state.
+                val narrow = client.get(path) { header(HttpHeaders.Authorization, "Bearer read-token") }
+                assertEquals(HttpStatusCode.Forbidden, narrow.status, "expected 403 for an agent-scoped read on $path")
+
+                val anonymous = client.get(path)
+                assertEquals(HttpStatusCode.Unauthorized, anonymous.status, "expected 401 without a credential on $path")
+            }
+        }
+
+    @Test
+    fun `a read grant on star reads the runner state with operator naming redacted`() =
+        testApplication {
+            val tokens = mapOf("status" to starReadToken, "root" to adminToken)
+            application { installGrantsApp(tokens, runnerStateDeps(tokens).first) }
+
+            val res = client.get("/api/v1/runners") { header(HttpHeaders.Authorization, "Bearer star-read-token") }
+
+            assertEquals(HttpStatusCode.OK, res.status)
+            assertEquals("no-store", res.headers[HttpHeaders.CacheControl], "live state must not be cached")
+            val body = res.bodyAsText()
+            // Counts, capacity and liveness are what the grant is for; operator naming is not.
+            assertTrue(body.contains("\"alias\": \"local\""), "the built-in local alias is Homer's own name: $body")
+            assertFalse(body.contains("gpu-box"), "a configured alias must be withheld: $body")
+            assertFalse(body.contains("host-1"), "an instance name must be withheld: $body")
+            assertTrue(body.contains("\"instanceId\": null"), "an instance id must be withheld: $body")
+            assertTrue(body.contains("\"name\": null"), "an instance name must be withheld: $body")
+            assertTrue(body.contains("\"kind\": \"external\""), "the generic backend kind stays: $body")
+            assertTrue(body.contains("\"concurrency\": 2"), "instance capacity stays: $body")
+            assertTrue(body.contains("\"draining\": false"), "instance liveness stays: $body")
+        }
+
+    @Test
+    fun `a read grant on star reads the queue with the alias filter emptied`() =
+        testApplication {
+            val tokens = mapOf("status" to starReadToken)
+            application { installGrantsApp(tokens, runnerStateDeps(tokens).first) }
+
+            val res = client.get("/api/v1/runners/queue") { header(HttpHeaders.Authorization, "Bearer star-read-token") }
+
+            assertEquals(HttpStatusCode.OK, res.status)
+            assertEquals("no-store", res.headers[HttpHeaders.CacheControl], "live state must not be cached")
+            val body = res.bodyAsText()
+            assertTrue(body.contains("\"pending\": 1"), "the queue depth stays: $body")
+            assertTrue(body.contains("\"oldestAgeSec\": 10"), "the queue age stays: $body")
+            assertTrue(body.contains("\"alias\": null"), "an alias filter carries no value: $body")
+            assertFalse(body.contains("gpu-box"), "an alias filter must be emptied, not echoed: $body")
+        }
+
+    @Test
+    fun `the admin runner state is byte-identical to the operator view`() =
+        testApplication {
+            val tokens = mapOf("root" to adminToken)
+            val (d, instance) = runnerStateDeps(tokens)
+            application { installGrantsApp(tokens, d) }
+
+            val res = client.get("/api/v1/runners") { header(HttpHeaders.Authorization, "Bearer admin-token") }
+
+            assertEquals(HttpStatusCode.OK, res.status)
+            val expected =
+                apiJson.encodeToString(
+                    RunnersStatusResponse(
+                        listOf(
+                            RunnerStatus(alias = "local", kind = "local", tags = emptyList(), concurrency = null, inUse = 0),
+                            RunnerStatus(alias = "gpu-box", kind = "ssh", tags = listOf("gpu"), concurrency = 2, inUse = 0),
+                            RunnerStatus(
+                                alias = "workers",
+                                kind = "external",
+                                tags = emptyList(),
+                                concurrency = null,
+                                inUse = 0,
+                                instances =
+                                    listOf(
+                                        RunnerInstanceStatus(
+                                            instanceId = instance.id,
+                                            name = instance.name,
+                                            tags = listOf("gpu"),
+                                            concurrency = 2,
+                                            activeSessions = 0,
+                                            lastSeenAt = instance.lastSeenAt / 1000,
+                                            registeredAt = instance.registeredAt / 1000,
+                                            draining = false,
+                                        ),
+                                    ),
+                            ),
+                        ),
+                    ),
+                )
+            assertEquals(expected, res.bodyAsText(), "the admin view must not change")
+        }
+
+    @Test
+    fun `a read grant on star reads the maintenance state but cannot toggle it or reload agents`() =
+        testApplication {
+            val tokens = mapOf("status" to starReadToken)
+            application { installGrantsApp(tokens, runnerStateDeps(tokens).first) }
+
+            val state = client.get("/api/v1/maintenance") { header(HttpHeaders.Authorization, "Bearer star-read-token") }
+            assertEquals(HttpStatusCode.OK, state.status)
+            assertEquals("no-store", state.headers[HttpHeaders.CacheControl])
+
+            val toggle =
+                client.post("/api/v1/maintenance") {
+                    header(HttpHeaders.Authorization, "Bearer star-read-token")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"enabled":true}""")
+                }
+            assertEquals(HttpStatusCode.NotFound, toggle.status, "the toggle stays admin-only")
+
+            val reload = client.post("/api/v1/agents/reload") { header(HttpHeaders.Authorization, "Bearer star-read-token") }
+            assertEquals(HttpStatusCode.Forbidden, reload.status, "reload stays admin-only")
+
+            val kill = client.delete("/api/v1/kill/42") { header(HttpHeaders.Authorization, "Bearer star-read-token") }
+            assertEquals(HttpStatusCode.NotFound, kill.status, "a read grant must not reach a control route")
+        }
+
+    @Test
+    fun `a caller without the grant gets the bare 404 from the maintenance read`() =
+        testApplication {
+            val tokens = mapOf("runner" to runToken, "reader" to readToken)
+            application { installGrantsApp(tokens, runnerStateDeps(tokens).first) }
+
+            val noGrant = client.get("/api/v1/maintenance") { header(HttpHeaders.Authorization, "Bearer run-token") }
+            val narrowRead = client.get("/api/v1/maintenance") { header(HttpHeaders.Authorization, "Bearer read-token") }
+
+            assertEquals(HttpStatusCode.NotFound, noGrant.status)
+            assertEquals(HttpStatusCode.NotFound, narrowRead.status)
+            assertEquals("", noGrant.bodyAsText(), "the denial is the bare 404 an unmounted path answers")
+        }
+
+    @Test
+    fun `status-all keeps the runner alias hidden from a read-star caller`() =
+        testApplication {
+            // ADR-0077 is not widened: the new grant reads runner state, never the
+            // operator naming on a run's status row.
+            val tokens = mapOf("status" to starReadToken)
+            val pm = mockk<ProcessManager>(relaxed = true)
+            coEvery {
+                pm.getAllProcesses(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            } returns
+                ProcessManager.ProcessListResult(
+                    processes =
+                        listOf(
+                            ProcessInfo(id = 42, status = ProcessStatus.FINISHED, agentName = "echo", owner = "alice")
+                                .copy(runner = RunnerState(alias = "gpu-box", podPhase = PodPhase.READY)),
+                        ),
+                    total = 1,
+                )
+            val questions = mockk<QuestionsService>(relaxed = true)
+            coEvery { questions.openCountByProcess() } returns emptyMap()
             val d =
-                deps(authorizerFor(tokens)).also {
-                    every { it.runnerRegistry } returns registry
-                    every { it.config } returns
-                        AppConfig(agentsSearchPath = "unused", workspaceRootPath = "unused", databasePath = "unused")
+                runnerStateDeps(tokens).first.also {
+                    every { it.processManager } returns pm
+                    every { it.questionsService } returns questions
                 }
             application { installGrantsApp(tokens, d) }
 
-            for (path in listOf("/api/v1/runners", "/api/v1/runners/queue")) {
-                val scoped = client.get(path) { header(HttpHeaders.Authorization, "Bearer run-token") }
-                assertEquals(HttpStatusCode.Forbidden, scoped.status, "expected 403 for scoped token on $path")
-                assertEquals(false, scoped.bodyAsText().contains("local"), "a denial must not leak the runner list")
+            val res = client.get("/api/v1/status/all") { header(HttpHeaders.Authorization, "Bearer star-read-token") }
 
-                val admin = client.get(path) { header(HttpHeaders.Authorization, "Bearer admin-token") }
-                assertEquals(HttpStatusCode.OK, admin.status, "expected 200 for admin token on $path")
-            }
+            assertEquals(HttpStatusCode.OK, res.status)
+            val body = res.bodyAsText()
+            assertFalse(body.contains("gpu-box"), "the run-status alias stays admin-only: $body")
+            assertTrue(body.contains("\"type\": \"ssh\""), "the generic backend type stays: $body")
         }
 
     @Test

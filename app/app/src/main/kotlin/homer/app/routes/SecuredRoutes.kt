@@ -4,10 +4,12 @@ import homer.app.models.AgentNameMatcher
 import homer.app.models.ErrorResponse
 import homer.app.services.AgentsService
 import homer.app.services.Authorizer
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.auth.UserIdPrincipal
 import io.ktor.server.auth.principal
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
@@ -23,6 +25,27 @@ internal suspend fun ApplicationCall.deniedUnlessAdmin(authorizer: Authorizer): 
     if (authorizer.isAdmin(principalName())) return false
     respond(HttpStatusCode.Forbidden, ErrorResponse(msg = "Admin role required"))
     return true
+}
+
+/**
+ * The server-state read gate, called explicitly at the top of each handler that reports runner
+ * state (`GET /runners`, `/runners/queue`): answers 403 and returns true when the caller holds
+ * neither the admin role nor a `read` grant on `*`. The denial names no alias or instance.
+ * See ADR-0111.
+ */
+internal suspend fun ApplicationCall.deniedUnlessServerReader(authorizer: Authorizer): Boolean {
+    if (authorizer.canReadServerState(principalName())) return false
+    respond(HttpStatusCode.Forbidden, ErrorResponse(msg = "Read grant on * required"))
+    return true
+}
+
+/**
+ * Live state a reader polls: a cached copy would let a proxy or a browser serve a stale
+ * answer after the state changed. See ADR-0092, ADR-0111.
+ */
+internal suspend fun ApplicationCall.respondNoStore(body: Any) {
+    response.header(HttpHeaders.CacheControl, "no-store")
+    respond(body)
 }
 
 /**

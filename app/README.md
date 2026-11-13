@@ -228,9 +228,9 @@ Output:
 | POST | `/api/v1/runner/sessions/{sid}/ops/{opId}/tar` | Post the gzip'd tar of a `download` op (`?kind=dir\|file`; `202`; `400` bad `kind`; `404` unknown or finished op; `408` past `transferTimeoutSec`; `413` over `maxTransferBytes` compressed or decompressed; `422` a refused entry (escaping, or a mode that cannot be normalized); `429` another post of the op in flight). | Runner domain token |
 | POST | `/api/v1/runner/sessions/{sid}/ops/{opId}/output` | Append one output chunk (`?stream=stdout\|stderr&seq=N`; `202`; `400` bad `stream` or `seq`; `404` unknown or finished op; `408` past `transferTimeoutSec`; `409` out of order; `413` over 1 MiB; `429` another chunk of the op and stream in flight). | Runner domain token |
 | GET | `/api/v1/status` | Get server status | `admin` role required |
-| GET | `/api/v1/runners` | Configured runners with permits in use, and each external domain's live instances | `admin` role required |
-| GET | `/api/v1/runners/queue` | Pending runner claims: count, oldest age, breakdown by filter | `admin` role required |
-| GET | `/api/v1/maintenance` | Maintenance mode state: `enabled`, `since` (Unix epoch seconds; null while off, and also for a mode that was already on when the server booted — the toggle time is not persisted) and `queued` (starts waiting). Responses carry `Cache-Control: no-store`. | `admin` role required; a non-admin gets the same `404` an unmounted path answers |
+| GET | `/api/v1/runners` | Configured runners with permits in use, and each external domain's live instances. An `admin` sees every operator-chosen name; a caller holding a `read` grant on `*` gets the same view with `alias`, `instanceId` and `name` nulled (the built-in `local` row keeps its alias, and tags, counts and ages stay). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*` (`403` otherwise) |
+| GET | `/api/v1/runners/queue` | Pending runner claims: count, oldest age, breakdown by filter (an alias filter carries `alias: null` for a caller without the `admin` role). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*` (`403` otherwise) |
+| GET | `/api/v1/maintenance` | Maintenance mode state: `enabled`, `since` (Unix epoch seconds; null while off, and also for a mode that was already on when the server booted — the toggle time is not persisted) and `queued` (starts waiting). Responses carry `Cache-Control: no-store`. | `admin` role, or a `read` grant on `*`; a caller with neither gets the same `404` an unmounted path answers |
 | POST | `/api/v1/maintenance` | Turn maintenance mode on or off (body `{"enabled": true\|false}`, `400` on a malformed body). On: cron fires are skipped and every other agent start queues — except a start that is part of a run still `WORKING` (a `!<agent>` hop, a dispatch, a continuation fire from a live origin), which is admitted at once. Off: the queue drains in arrival order within one release drain, `releaseConcurrency` at a time — rapid re-toggles overlap drains, so the order across drains is not guaranteed. See [below](#getpost-apiv1maintenance). | `admin` role required; a non-admin gets the same `404` an unmounted path answers |
 | GET | `/api/v1/costs` | Current LLM harness (Claude/Codex/opencode) spend windows + configured caps; also returns `costTrackedTagKeys`, the keys queryable via `GET /api/v1/costs/by-tag/{key}` | `admin` role required |
 | GET | `/api/v1/costs/monthly` | Per-agent LLM harness (Claude/Codex/opencode) spend for one UTC month, from the persistent cost ledger (query: `month`, defaults to current UTC month; `400` if malformed) | `admin` role required |
@@ -408,6 +408,19 @@ rows. `lastSeenAt` / `registeredAt` are Unix epoch seconds. The `local` row is
 absent when `server.localRunner.enabled` is `false` (see
 [ADR-0095](../docs/adr/0095-local-runner-can-be-turned-off.md)).
 
+**Who reads it.** An `admin` caller sees the aliases and instance names as
+configured. A caller holding a `read` grant on `*` — the grant that says "every
+agent", not one agent — reads the same state with every operator-chosen name
+withheld: `alias` is `null` on each configured row, and `instanceId` and `name`
+are `null` on every instance. The built-in `local` row keeps its alias, which
+Homer assigns itself. Tags, `kind`, `concurrency`, `inUse`, `activeSessions`,
+the timestamps and `draining` are unchanged, so capacity and liveness stay
+readable. A tag is emitted only after re-checking it against the tag pattern, so
+a malformed value can never ride out through this view. A caller with no grant,
+or with a `read` grant on named agents only, gets `403` — this endpoint reports
+server-wide state, which a per-agent grant does not cover. See
+[ADR-0111](../docs/adr/0111-read-grant-on-star-reads-runner-state.md).
+
 ### `GET /api/v1/runners/queue`
 
 Pending runner claims (requests waiting for a free permit), grouped by filter.
@@ -425,6 +438,13 @@ Pending runner claims (requests waiting for a free permit), grouped by filter.
 
 A filter sets exactly one of `alias`/`tags`; the other is `null`. Top-level
 `oldestAgeSec` is `null` and `byFilter` is `[]` when nothing is waiting.
+
+Readable by an `admin` or by a caller holding a `read` grant on `*`, on the same
+terms as `GET /api/v1/runners` above: for a caller without the `admin` role an
+alias filter comes back with `alias: null` (its `pending` and `oldestAgeSec`
+stay), a tag filter keeps its tags, and the response carries
+`Cache-Control: no-store`. See
+[ADR-0111](../docs/adr/0111-read-grant-on-star-reads-runner-state.md).
 
 ### `GET`/`POST /api/v1/maintenance`
 
@@ -466,10 +486,12 @@ longer than `queueWaitSec` answers `503`, and one that arrived at a full queue
 (`maxQueuedStarts`, or its own `maxQueuedStartsPerPrincipal` share) answers
 `429` — neither is replayed later.
 
-The gate is admin-only and handler-level: a non-admin or unauthenticated caller
-gets the same `404` an unmounted path answers, and the body is parsed only after
-that check, so the endpoint's existence and request shape stay hidden
-(ADR-0037, ADR-0047 rule 3).
+The gate is handler-level: `GET` admits an `admin` or a caller holding a `read`
+grant on `*` (the same grant that reads the runner state, see
+[ADR-0111](../docs/adr/0111-read-grant-on-star-reads-runner-state.md)), `POST`
+stays `admin`-only, and a caller with neither gets the same `404` an unmounted
+path answers. The `POST` body is parsed only after that check, so the endpoint's
+existence and request shape stay hidden (ADR-0037, ADR-0047 rule 3).
 
 ### `GET /api/v1/agents/{agentName}/langgraph`
 

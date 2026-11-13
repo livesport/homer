@@ -476,10 +476,13 @@ export interface HealthResponse {
   maintenance?: boolean;
 }
 
-// Runner status (GET /api/v1/runners) — admin only. Timestamps are epoch seconds.
+// Runner status (GET /api/v1/runners) — admin, or `read` on `*` with the operator-chosen
+// names nulled (ADR-0111). Timestamps are epoch seconds.
 export interface RunnerInstanceStatus {
-  instanceId: string;
-  name: string;
+  /** null for a caller without the admin role */
+  instanceId: string | null;
+  /** null for a caller without the admin role */
+  name: string | null;
   tags: string[];
   concurrency: number;
   activeSessions: number;
@@ -489,7 +492,8 @@ export interface RunnerInstanceStatus {
 }
 
 export interface RunnerStatus {
-  alias: string;
+  /** null for a caller without the admin role, except on the built-in `local` row */
+  alias: string | null;
   kind: 'local' | 'ssh' | 'kubernetes' | 'external';
   tags: string[];
   /** null = unbounded */

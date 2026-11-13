@@ -28,7 +28,7 @@ class ExternalRunnerTest : E2eTestBase() {
             .runners
             .filter { it.kind == "external" }
             .flatMap { it.instances.orEmpty() }
-            .map { it.name }
+            .mapNotNull { it.name }
             .toSet()
 
     private suspend fun awaitInstance(name: String) =

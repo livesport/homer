@@ -82,7 +82,8 @@ function ConfiguredRunnersCard({ runners }: { runners: RunnerStatus[] }) {
   );
 }
 
-type InstanceRow = RunnerInstanceStatus & { domain: string };
+// `domain` is the row's alias, null only in the redacted view (ADR-0111) — this page is admin-gated.
+type InstanceRow = RunnerInstanceStatus & { domain: string | null };
 
 function ExternalInstancesCard({ instances }: { instances: InstanceRow[] }) {
   return (

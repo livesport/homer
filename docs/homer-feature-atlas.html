@@ -864,7 +864,7 @@ onStop:
             from <code>GET /api/v1/health</code> and shows a red alert bar across every dashboard page, so a run that
             seems to do nothing has an explanation on screen.</p>
           <pre><code>curl -X POST "$HOMER/api/v1/maintenance" -d '{"enabled": true}'
-# {"enabled":true,"since":1761…,"queued":0}   GET reads it back, admin only</code></pre>
+# {"enabled":true,"since":1761…,"queued":0}   GET reads it back (admin, or read on *)</code></pre>
         </article>
 
       </div>
@@ -2528,7 +2528,9 @@ sftpTransferTimeoutSeconds: 60 # per-operation SFTP deadline; null = unbounded (
             <code>homer-runner</code>, register with the tags they serve and long-poll Homer for runs, so a box behind NAT
             works and adding a machine or a tag needs no restart. Every wait is bounded (heartbeat, transfer, per-instance
             concurrency); a silent instance is dropped and its runs fail. Admins can see every configured runner, its
-            live instances and pending claims via <code>GET /api/v1/runners</code> and <code>GET /api/v1/runners/queue</code>.
+            live instances and pending claims via <code>GET /api/v1/runners</code> and <code>GET /api/v1/runners/queue</code>;
+            a principal granted <code>read</code> on <code>*</code> reads the same state with the operator-chosen aliases and
+            instance names withheld.
             The runner makes its JVM non-dumpable at startup, so a run sharing its user cannot read the domain token out of
             <code>/proc</code>. An instance that cannot start processes or write its root stops claiming, deregisters and
             exits <code>3</code> for its supervisor to restart. Homer hands each run to the idle instance that claimed
@@ -2674,8 +2676,8 @@ apk add --no-cache tar gzip curl</code></pre>
               <tr><td class="verb">GET</td><td class="path">/api/v1/heartbeat</td><td>Ping with the server version; requires a valid credential under any configured scheme (open only under <code>unsecured</code>), so it doubles as a credential check.</td></tr>
               <tr><td class="verb">GET</td><td class="path">/api/v1/health</td><td>Rich JSON status: runners plus the orphan-pod sweep snapshot; configured runner aliases are admin-only. Not a probe.</td></tr>
               <tr><td class="verb">GET</td><td class="path">/api/v1/status</td><td>Server status (admin).</td></tr>
-              <tr><td class="verb">GET</td><td class="path">/api/v1/runners</td><td>Configured runners with permits in use, and each external domain's live instances (admin).</td></tr>
-              <tr><td class="verb">GET</td><td class="path">/api/v1/runners/queue</td><td>Pending runner claims: count, oldest age, breakdown by filter (admin).</td></tr>
+              <tr><td class="verb">GET</td><td class="path">/api/v1/runners</td><td>Configured runners with permits in use, and each external domain's live instances (admin, or <code>read</code> on <code>*</code> with aliases and instance names withheld).</td></tr>
+              <tr><td class="verb">GET</td><td class="path">/api/v1/runners/queue</td><td>Pending runner claims: count, oldest age, breakdown by filter (admin, or <code>read</code> on <code>*</code> with alias filters withheld).</td></tr>
               <tr><td class="verb">GET/POST</td><td class="path">/api/v1/agent/{name}</td><td>Run an agent. POST is the supported verb; GET is deprecated.</td></tr>
               <tr><td class="verb">GET</td><td class="path">/api/v1/agents</td><td>List agents, filtered to those you hold a grant on, with inputs, cron state and <code>writable</code>.</td></tr>
               <tr><td class="verb">POST</td><td class="path">/api/v1/agents</td><td>Create a new agent directory.</td></tr>

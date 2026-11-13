@@ -46,6 +46,15 @@ class Authorizer(
             .toSet()
     }
 
+    /**
+     * Whether [principal] may read server-level runner state (`GET /runners`, `/runners/queue`
+     * and `/maintenance`): an admin, unsecured mode, or a READ grant listing the literal `*`
+     * pattern. A narrower read grant does not unlock server state, and an unknown or absent
+     * principal fails closed. Read-only: it grants no reload, kill or maintenance toggle.
+     * See ADR-0111.
+     */
+    fun canReadServerState(principal: String?): Boolean = isAdmin(principal) || readableAgents(principal)?.contains("*") == true
+
     /** Whether [principal] holds ANY action grant on [agentName] (admin: always true). Used to filter agent listings and hide agent existence on detail reads. */
     fun anyGrant(
         principal: String?,

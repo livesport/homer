@@ -265,7 +265,9 @@ data class ContinuationList(
 
 @Serializable
 data class RunnerInstanceView(
-    val name: String,
+    // Null for a caller without the admin role: the instance's identity is operator-chosen (ADR-0111).
+    val instanceId: String? = null,
+    val name: String? = null,
     val tags: List<String>,
     val activeSessions: Int,
     val draining: Boolean,
@@ -273,7 +275,8 @@ data class RunnerInstanceView(
 
 @Serializable
 data class RunnerView(
-    val alias: String,
+    // Null for a non-admin reader, except on the built-in `local` row (ADR-0077, ADR-0111).
+    val alias: String? = null,
     val kind: String,
     val instances: List<RunnerInstanceView>? = null,
 )
@@ -284,8 +287,21 @@ data class RunnersView(
 )
 
 @Serializable
+data class RunnerFilterView(
+    val alias: String? = null,
+    val tags: List<String>? = null,
+)
+
+@Serializable
+data class RunnerQueueGroupView(
+    val filter: RunnerFilterView,
+    val pending: Int,
+)
+
+@Serializable
 data class RunnerQueueView(
     val pending: Int,
+    val byFilter: List<RunnerQueueGroupView> = emptyList(),
 )
 
 @Serializable

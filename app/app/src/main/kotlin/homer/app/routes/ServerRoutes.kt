@@ -21,7 +21,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 
-/** `/heartbeat`, `/health`, and the admin-only `/costs*`, `/status` and `/runners*` endpoints. */
+/** `/heartbeat`, `/health`, the admin-only `/costs*` and `/status`, and the `/runners*` state reads. */
 internal fun Route.serverRoutes(deps: ApiDeps) {
     serverHealthRoutes(deps)
     costMeterRoutes(deps)
@@ -155,7 +155,10 @@ private fun Route.costByTagRoute(deps: ApiDeps) {
     }
 }
 
-/** `GET /status`, `/runners` and `/runners/queue`: the admin-only server and runner state. */
+/**
+ * `GET /status` (admin), and `/runners` and `/runners/queue` (admin, or a `read` grant on `*`
+ * with operator naming redacted). See ADR-0111.
+ */
 private fun Route.serverStatusRoutes(deps: ApiDeps) {
     with(deps) {
         get("/status") {
@@ -173,13 +176,17 @@ private fun Route.serverStatusRoutes(deps: ApiDeps) {
         }
 
         get("/runners") {
-            if (call.deniedUnlessAdmin(authorizer)) return@get
-            call.respond(runnersStatus(config, runnerRegistry))
+            if (call.deniedUnlessServerReader(authorizer)) return@get
+            // Operator-chosen aliases and instance names are admin-only, resolved once per
+            // request like /health (CWE-200, fail closed). See ADR-0077, ADR-0111.
+            val namesVisible = authorizer.isAdmin(call.principalName())
+            call.respondNoStore(runnersStatus(config, runnerRegistry, namesVisible))
         }
 
         get("/runners/queue") {
-            if (call.deniedUnlessAdmin(authorizer)) return@get
-            call.respond(runnerQueueStatus(runnerRegistry.queue.pendingSnapshot(), runnerRegistry.queue.nowMs()))
+            if (call.deniedUnlessServerReader(authorizer)) return@get
+            val namesVisible = authorizer.isAdmin(call.principalName())
+            call.respondNoStore(runnerQueueStatus(runnerRegistry.queue.pendingSnapshot(), runnerRegistry.queue.nowMs(), namesVisible))
         }
     }
 }
