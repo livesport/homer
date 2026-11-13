@@ -4,13 +4,18 @@ import homer.e2e.support.Awaits
 import homer.e2e.support.E2e
 import homer.e2e.support.E2eTestBase
 import homer.e2e.support.HomerApi
+import homer.e2e.support.RunnerInstanceView
 import homer.e2e.support.RunnerQueueView
 import homer.e2e.support.RunnersView
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,18 +27,26 @@ import kotlin.test.assertTrue
  * `e2e-crash-runner` serves `e2e-crash` and is killed by the crash test.
  */
 class ExternalRunnerTest : E2eTestBase() {
-    private suspend fun instanceNames(): Set<String> =
+    /** The registration shape a domain enforces on a `name` or a `version` (SERVER.md, runner protocol). */
+    private val tagShape = Regex("^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$")
+
+    private suspend fun externalInstances(): List<RunnerInstanceView> =
         HomerApi
             .decode<RunnersView>(E2e.client.get("/api/v1/runners"))
             .runners
             .filter { it.kind == "external" }
             .flatMap { it.instances.orEmpty() }
-            .map { it.name }
-            .toSet()
+
+    private suspend fun instanceNames(): Set<String> = externalInstances().map { it.name }.toSet()
 
     private suspend fun awaitInstance(name: String) =
         Awaits.awaitNotNull("instance '$name' registered", timeoutMs = 60_000, pollMs = 500) {
             name.takeIf { it in instanceNames() }
+        }
+
+    private suspend fun awaitInstanceView(name: String): RunnerInstanceView =
+        Awaits.awaitNotNull("instance '$name' registered", timeoutMs = 60_000, pollMs = 500) {
+            externalInstances().firstOrNull { it.name == name }
         }
 
     @Test
@@ -84,6 +97,41 @@ class ExternalRunnerTest : E2eTestBase() {
                     }
                 assertEquals(HttpStatusCode.Unauthorized, domain.status, path)
             }
+        }
+
+    @Test
+    fun `the status API reports the instance's self-declared version`() =
+        runBlocking {
+            val instance = awaitInstanceView("e2e-runner")
+
+            // The reference runner's hardcoded version passes the same shape the domain
+            // enforces at registration — a real runner's version registers, then surfaces here.
+            val version = instance.version
+            assertTrue(
+                !version.isNullOrBlank() && tagShape.matches(version),
+                "the registered version reaches GET /api/v1/runners in the tag shape: $instance",
+            )
+        }
+
+    @Test
+    fun `a registration with a version outside the tag shape is refused with 422`() =
+        runBlocking {
+            val response =
+                E2e.unauthClient.post("/api/v1/runner/register") {
+                    header(HttpHeaders.Authorization, "Bearer e2e-external-domain-token-0123456789")
+                    // Full semver with build metadata — `+` is outside the accepted shape.
+                    setBody(
+                        TextContent(
+                            """{"name":"e2e-bad-version","tags":["e2e-external"],"concurrency":1,"version":"1.42.0+build.5"}""",
+                            ContentType.Application.Json,
+                        ),
+                    )
+                }
+
+            assertEquals(HttpStatusCode.UnprocessableEntity, response.status)
+            val body = response.bodyAsText()
+            assertTrue("1.42.0+build.5" !in body, "the refusal must not echo the raw version: $body")
+            assertTrue("e2e-bad-version" !in instanceNames(), "a refused registration registers no instance")
         }
 
     @Test
