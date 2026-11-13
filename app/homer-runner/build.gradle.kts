@@ -35,6 +35,25 @@ configurations.named("testRuntimeClasspath") {
     exclude(group = "org.slf4j", module = "slf4j-simple")
 }
 
+// The release this runner binary is built from: `-PhomerVersion`, else the HOMER_VERSION
+// environment the release build already passes for the images (ADR-0093), else `dev`. This is
+// the single source for the version the runner reports, the shadow jar's name and the generated
+// resource below — no second literal. A value that could not safely be reported to Homer or put
+// in a file name fails the build instead of reaching either.
+val runnerVersionPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+val runnerVersion: String =
+    providers
+        .gradleProperty("homerVersion")
+        .orElse(providers.environmentVariable("HOMER_VERSION"))
+        .orNull
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?: "dev"
+if (!runnerVersionPattern.matches(runnerVersion)) {
+    throw GradleException("homerVersion (or HOMER_VERSION) must match $runnerVersionPattern, got '$runnerVersion'")
+}
+version = runnerVersion
+
 application {
     mainClass = "homer.runner.MainKt"
 }
@@ -64,7 +83,7 @@ tasks.test {
 tasks.shadowJar {
     archiveBaseName.set("homer-runner")
     archiveClassifier.set("all")
-    archiveVersion.set("0.1.0")
+    archiveVersion.set(runnerVersion)
     manifest { attributes["Main-Class"] = "homer.runner.MainKt" }
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
     from(tasks.named("generateLicenseReport")) {
@@ -72,6 +91,24 @@ tasks.shadowJar {
         into("META-INF")
     }
 }
+
+// The compiled-in version: a classpath resource the runner reads at startup, so the jar reports
+// the release it was built from without any run-time configuration. The declared input rebuilds
+// it when the version changes.
+val generateRunnerVersion =
+    tasks.register("generateRunnerVersion") {
+        val stamped = runnerVersion
+        val outputDir = layout.buildDirectory.dir("generated/runner-version")
+        inputs.property("runnerVersion", stamped)
+        outputs.dir(outputDir)
+        doLast {
+            val dir = outputDir.get().asFile.resolve("homer/runner")
+            dir.mkdirs()
+            dir.resolve("runner-version.txt").writeText(stamped)
+        }
+    }
+
+sourceSets.named("main") { resources.srcDir(generateRunnerVersion) }
 
 // The runner image ships its own few runtime dependencies on top of :app's, so it gets the same
 // CVE gate as :app (ADR-0088): the NVD mirror, runtimeClasspath only, :app's suppressions.

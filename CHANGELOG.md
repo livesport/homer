@@ -4,6 +4,7 @@
 
 ### Homer
 
+- **Fixed: `homer-runner` reports its release version** — A pull runner registers with the version of the release it was built from (`dev` for a source build) instead of `0.1.0`, and Homer rejects a malformed version.
 - **Added: `/api/v1/callback/whoami`** — Resolves a run's callback token to its process id and agent, so an egress proxy can apply a per-agent policy. See [ADR-0110](docs/adr/0110-run-identity-for-egress-proxies.md).
 
 ## [1.42.0] - 2026-11-13

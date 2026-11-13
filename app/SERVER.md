@@ -3688,10 +3688,13 @@ runners:
       - { local: /app/scripts, remote: .homer/scripts, env: SCRIPTS_DIR }
 ```
 
-An instance registers with a name, the tags it serves and a `concurrency`,
-then long-polls for claims. It matches an agent with `runner: workers` or an
-agent whose `runnerTags` are all among its announced tags; among matches the
-oldest run wins, exactly as for static runners, and among idle matching
+An instance registers with a name, the tags it serves, a `concurrency` and the
+version of the release it was built from (the reference `homer-runner` sends the
+tag its jar was built with, `dev` for a source build; the field is optional, so
+an older instance may send none), then long-polls for claims. It matches an
+agent with `runner: workers` or an agent whose `runnerTags` are all among its
+announced tags; among matches the oldest run wins, exactly as for static
+runners, and among idle matching
 instances the one that claimed least recently gets it. A name identifies one
 live instance of its domain: registering a name another live instance of the
 same domain already holds is refused with `422`, naming no token, so a
@@ -3826,7 +3829,7 @@ rate-limited by its domain's bucket, not the global one (see
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /api/v1/runner/register` | Body `{name?, tags?, concurrency?=1, version?}`. `201 {instanceId, pollSec, heartbeatTimeoutSec}`. `422` when tags violate the shape or `allowedTags`, `concurrency` is outside `1..maxConcurrencyPerInstance`, `name` doesn't match `^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`, or `name` is already held by a live instance of this domain. `429` at `maxInstances`. |
+| `POST /api/v1/runner/register` | Body `{name?, tags?, concurrency?=1, version?}`. `201 {instanceId, pollSec, heartbeatTimeoutSec}`. `422` when tags violate the shape or `allowedTags`, `concurrency` is outside `1..maxConcurrencyPerInstance`, `name` or a non-blank `version` doesn't match `^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`, or `name` is already held by a live instance of this domain. `429` at `maxInstances`. |
 | `DELETE /api/v1/runner/instances/{id}` | Stop offering claims to this instance; in-flight sessions continue. `204`. |
 | `POST /api/v1/runner/instances/{id}/claim` | Long-poll up to `pollSec` (30 s). `200 {sessionId, processId, agentName, tags}` or `204`. At most `concurrency` concurrent polls per instance, the next is `429`. Also a heartbeat. |
 | `POST /api/v1/runner/sessions/{sid}/next` | Body optionally `{completed: <result>}`, at most 64 KiB (`413` over it). Long-poll up to `pollSec`; `200 <op>` or `204`. Also a heartbeat. A result for an op that already has one is ignored. At most 3 concurrent polls per session, a further one is `429` — the refused call still records the result it carried, so only the wait is refused. |

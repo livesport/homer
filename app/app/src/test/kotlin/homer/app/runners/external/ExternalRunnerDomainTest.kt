@@ -81,6 +81,20 @@ class ExternalRunnerDomainTest {
     }
 
     @Test
+    fun `register rejects a malformed version and keeps the field optional`() {
+        val d = domain()
+        val tooLong = "1" + "0".repeat(64)
+        for (bad in listOf(tooLong, "1.42.0\nboom", "1.42 .0", "-1.42.0")) {
+            assertThrows<RunnerRegistrationRejectedException> { d.register(RegisterInstanceRequest(version = bad)) }
+        }
+        assertTrue(d.instances().isEmpty(), "a rejected registration leaves no instance")
+        assertTrue(queue.consumers().isEmpty(), "a rejected registration leaves no queue consumer")
+
+        assertNull(d.register(RegisterInstanceRequest(version = "  ")).version, "a blank version is stored as absent")
+        assertEquals("1.42.0", d.register(RegisterInstanceRequest(version = "1.42.0")).version)
+    }
+
+    @Test
     fun `register beyond maxInstances is refused`() {
         val d = domain(RunnerConfig.External(token = "t", maxInstances = 1))
         d.register(RegisterInstanceRequest())

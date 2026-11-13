@@ -54,6 +54,7 @@ class ExternalRunnerDomain(
             )
         }
         val name = validatedName(request.name)
+        val version = validatedVersion(request.version)
         val id = RunnerProtocol.newId()
         val instance =
             ExternalRunnerInstance(
@@ -62,7 +63,7 @@ class ExternalRunnerDomain(
                 alias = alias,
                 tags = tags,
                 declaredConcurrency = request.concurrency,
-                version = request.version,
+                version = version,
                 registeredAt = clock(),
                 declaredName = name,
             )
@@ -98,6 +99,19 @@ class ExternalRunnerDomain(
             throw RunnerRegistrationRejectedException(alias, "name must match ${RunnerTagValidation.PATTERN}")
         }
         return name
+    }
+
+    /**
+     * The version [requested], null when absent or blank; rejected unless it has a tag's shape.
+     * The field stays optional (ADR-0066: the runner and Homer upgrade independently), but an
+     * instance writes it, so an unbounded one would be stored and later shown to operators.
+     */
+    private fun validatedVersion(requested: String?): String? {
+        val version = requested?.takeIf { it.isNotBlank() }
+        if (version != null && !RunnerTagValidation.PATTERN.matches(version)) {
+            throw RunnerRegistrationRejectedException(alias, "version must match ${RunnerTagValidation.PATTERN}")
+        }
+        return version
     }
 
     fun instance(id: String): ExternalRunnerInstance? = instances[id]

@@ -272,7 +272,8 @@ class RunnerAgent(
     }
 
     companion object {
-        const val VERSION = "0.1.0"
+        /** The release this binary was built from, `dev` for a source build; see [RunnerVersion]. */
+        val VERSION: String = RunnerVersion.current
         private val DEREGISTER_TIMEOUT = 5.seconds
         private const val DEREGISTER_ATTEMPTS = 2
         private val logger = LoggerFactory.getLogger(RunnerAgent::class.java)
