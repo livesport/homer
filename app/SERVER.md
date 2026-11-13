@@ -3826,7 +3826,7 @@ rate-limited by its domain's bucket, not the global one (see
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /api/v1/runner/register` | Body `{name?, tags?, concurrency?=1, version?}`. `201 {instanceId, pollSec, heartbeatTimeoutSec}`. `422` when tags violate the shape or `allowedTags`, `concurrency` is outside `1..maxConcurrencyPerInstance`, `name` doesn't match `^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`, or `name` is already held by a live instance of this domain. `429` at `maxInstances`. |
+| `POST /api/v1/runner/register` | Body `{name?, tags?, concurrency?=1, version?}`. `201 {instanceId, pollSec, heartbeatTimeoutSec}`. `422` when tags violate the shape or `allowedTags`, `concurrency` is outside `1..maxConcurrencyPerInstance`, `name` doesn't match `^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`, `name` is already held by a live instance of this domain, or `version` doesn't match the same `^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$` shape (a blank `version` is stored as absent). `429` at `maxInstances`. |
 | `DELETE /api/v1/runner/instances/{id}` | Stop offering claims to this instance; in-flight sessions continue. `204`. |
 | `POST /api/v1/runner/instances/{id}/claim` | Long-poll up to `pollSec` (30 s). `200 {sessionId, processId, agentName, tags}` or `204`. At most `concurrency` concurrent polls per instance, the next is `429`. Also a heartbeat. |
 | `POST /api/v1/runner/sessions/{sid}/next` | Body optionally `{completed: <result>}`, at most 64 KiB (`413` over it). Long-poll up to `pollSec`; `200 <op>` or `204`. Also a heartbeat. A result for an op that already has one is ignored. At most 3 concurrent polls per session, a further one is `429` — the refused call still records the result it carried, so only the wait is refused. |

@@ -133,6 +133,37 @@ class ExternalRunnerDomainTest {
     }
 
     @Test
+    fun `register stores the reported version, and a blank or absent one becomes null`() {
+        val d = domain()
+        assertEquals("1.42.0", d.register(RegisterInstanceRequest(name = "host-1", version = "1.42.0")).version)
+        assertNull(d.register(RegisterInstanceRequest(name = "host-2", version = "   ")).version)
+        assertNull(d.register(RegisterInstanceRequest(name = "host-3")).version)
+    }
+
+    @Test
+    fun `register rejects a version that is not tag-shaped, and echoes no raw value`() {
+        val d = domain()
+        val tooLong = "v".repeat(65)
+        for (bad in listOf(tooLong, "<img src=x onerror=alert(1)>", "1.0.0\nforged", "1.0.0\u0000")) {
+            val ex = assertThrows<RunnerRegistrationRejectedException> { d.register(RegisterInstanceRequest(version = bad)) }
+            assertTrue(
+                ex.message!!.contains("version must match ${RunnerTagValidation.PATTERN}"),
+                "a version-shape rejection carries the validator's own message: ${ex.message}",
+            )
+            assertFalse(ex.message!!.contains(bad), "the rejection must not echo the raw value: ${ex.message}")
+        }
+        assertTrue(d.instances().isEmpty(), "a rejected version registers no instance")
+        assertTrue(queue.consumers().isEmpty(), "a rejected registration leaves no consumer")
+    }
+
+    @Test
+    fun `register accepts a version of exactly the shape limit and rejects one past it`() {
+        val d = domain()
+        assertEquals("v".repeat(64), d.register(RegisterInstanceRequest(version = "v".repeat(64))).version)
+        assertThrows<RunnerRegistrationRejectedException> { d.register(RegisterInstanceRequest(version = "v".repeat(65))) }
+    }
+
+    @Test
     fun `deregister stops claims and removes the instance once idle`() =
         runTest {
             val d = domain()

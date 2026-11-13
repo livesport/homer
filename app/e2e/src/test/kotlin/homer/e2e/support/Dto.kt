@@ -269,6 +269,8 @@ data class RunnerInstanceView(
     val tags: List<String>,
     val activeSessions: Int,
     val draining: Boolean,
+    // The instance's self-reported version from registration; null when it reported none.
+    val version: String? = null,
 )
 
 @Serializable
