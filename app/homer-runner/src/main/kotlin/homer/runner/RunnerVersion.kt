@@ -1,16 +1,17 @@
 package homer.runner
 
+import homer.app.models.RunnerTagValidation
+
 /**
  * The version this runner binary was built from, as the build stamped it into the jar
  * (`homerVersion` Gradle property, else `HOMER_VERSION`, else `dev` — one source, see
- * `homer-runner/build.gradle.kts`). Homer reports it to operators, so it is held to the
- * shape of an instance name and never read from run-time configuration: every host
- * running the same jar reports the same value.
+ * `homer-runner/build.gradle.kts`). Homer validates the registration's `version` against
+ * [RunnerTagValidation.PATTERN] and reports it to operators, so that same shape is the one
+ * gate here — a jar that passes this parses would be refused `422` at registration otherwise.
+ * The value is never read from run-time configuration: every host running the same jar
+ * reports the same thing.
  */
 object RunnerVersion {
-    /** The shape a reported version must have — the token shape a release tag and a runner tag use. */
-    val PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-
     /** What a build without release information reports. */
     const val FALLBACK = "dev"
 
@@ -22,7 +23,7 @@ object RunnerVersion {
     /** [raw] trimmed when it is a safe release token, [FALLBACK] otherwise. */
     fun parse(raw: String?): String {
         val version = raw?.trim().orEmpty()
-        return if (PATTERN.matches(version)) version else FALLBACK
+        return if (RunnerTagValidation.PATTERN.matches(version)) version else FALLBACK
     }
 
     private fun resourceText(): String? = RunnerVersion::class.java.getResourceAsStream(RESOURCE)?.use { it.readBytes().decodeToString() }

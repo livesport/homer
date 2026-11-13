@@ -1,5 +1,6 @@
 package homer.runner
 
+import homer.app.models.RunnerTagValidation
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -24,7 +25,8 @@ class RunnerVersionTest {
     fun `current is the version this build stamped into the jar`() {
         // A test build passes no -PhomerVersion, so the build's fallback is what it reports;
         // the point is that it is a real build value, never the old hardcoded constant.
-        assertEquals("dev", RunnerVersion.current)
-        assertTrue(RunnerVersion.PATTERN.matches(RunnerVersion.current))
+        // Asserted as the shape the server accepts, not as one build invocation's value —
+        // a build stamped -PhomerVersion=1.42.0 must pass this same test.
+        assertTrue(RunnerTagValidation.PATTERN.matches(RunnerVersion.current))
     }
 }

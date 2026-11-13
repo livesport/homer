@@ -26,6 +26,9 @@ dependencies {
     implementation(libs.bundles.ktorClient)
 
     testImplementation(libs.bundles.testing)
+    // Property-based tests for the version validators (root §6) run kotest-property inside a
+    // plain JUnit test, as in :app.
+    testImplementation(libs.kotestProperty)
     // Tests assert on log events through logback's ListAppender, so the test runtime needs a
     // real backend; the runner itself keeps slf4j-simple as its only binding.
     testImplementation(libs.logbackClassic)
@@ -40,6 +43,9 @@ configurations.named("testRuntimeClasspath") {
 // the single source for the version the runner reports, the shadow jar's name and the generated
 // resource below — no second literal. A value that could not safely be reported to Homer or put
 // in a file name fails the build instead of reaching either.
+// The pattern is the shape the server validates the registration's version against
+// (RunnerTagValidation.PATTERN); duplicated here because a build script cannot read the
+// compiled class, so the two must be kept in step.
 val runnerVersionPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 val runnerVersion: String =
     providers

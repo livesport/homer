@@ -289,6 +289,11 @@ data class RunnerQueueView(
 )
 
 @Serializable
+data class RunnerRegisterResponse(
+    val instanceId: String,
+)
+
+@Serializable
 data class TopologyNode(
     val id: String,
 )
