@@ -630,7 +630,7 @@ webhook/curl triggers below keep working. Cookie auth also requires
 `corsAllowedOrigins` to be set to the console origin(s) — see
 [ADR-0016](../docs/adr/0016-cookie-auth-csrf-protection.md).
 
-The `/api/v1/callback/*` endpoints (`questions*`, `dispatches`, `tags`, `runs`, `joins`, `results/{token}`, `whoami`) use a
+The `/api/v1/callback/*` endpoints (`questions*`, `dispatches`, `dispatch-groups`, `tags`, `runs`, `joins`, `results/{token}`, `messages/take`, `whoami`) use a
 separate credential domain: a per-process random token Homer injects into every
 command as `HMR_CALLBACK_TOKEN` (sent as `Authorization: Bearer ...`). Operator
 bearer/HMAC/cookie credentials do **not** work there, and the callback

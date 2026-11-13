@@ -45,8 +45,9 @@ Homer answers only *who*, never *what*.
   authentication: operator credentials never satisfy it, and the token satisfies nothing
   but callback routes.
 - The token is read from `X-Homer-Callback-Token`, else from `Authorization: Bearer`. At
-  a proxy `Authorization` belongs to the upstream, so a present dedicated header is the
-  only one read.
+  a proxy `Authorization` belongs to the upstream, so a non-blank dedicated header is the
+  only one read (a blank one, what `${HMR_CALLBACK_TOKEN:-}` sends where the variable is
+  unset, counts as absent).
 - `200 {processId, agent}`, the same values in `X-Homer-Process-Id` / `X-Homer-Agent`
   (so envoy's `ext_authz` forwards them without parsing JSON). One identical `401` for a
   missing, unknown or ended run's token — a caller learns nothing from which it was.
@@ -65,9 +66,11 @@ Homer answers only *who*, never *what*.
   another working run's token. Accepted at this boundary (root `CLAUDE.md` §12: same-UID
   access is not a principal boundary); separating runs by user, pod or runner pool is the
   deployment's job, and `app/SERVER.md` says so.
-- Neutral: the route is on the proxy's hot path. Token resolution is a linear scan with
-  a constant-time comparison per registration, fine for tens of working runs; indexing by
-  a hash of the token is the fix if it shows in profiles.
+- Neutral: the route is on the proxy's hot path, and the registry holds every run until
+  capacity eviction or purge (up to `maxProcesses`), not just the working ones. Tokens are
+  therefore indexed by their SHA-256: one lookup per request, then a constant-time
+  comparison. The lookup's timing can reveal at most a digest prefix of a 256-bit random
+  token, never the token, so the digest needs no key.
 
 ## Pros and Cons of the Options
 

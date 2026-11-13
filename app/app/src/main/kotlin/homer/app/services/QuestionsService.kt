@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.Logger
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.HexFormat
 import java.util.UUID
@@ -37,8 +38,9 @@ import kotlin.time.ExperimentalTime
  * is rebuilt empty on boot:
  * - [registrations] — the per-process callback-token registry. `registerProcess`
  *   mints a random token; `resolveToken` maps a presented token back to its
- *   process id (constant-time). The token is the only credential agent
- *   workspaces ever see — real API credentials never enter them.
+ *   process id (a digest lookup, then a constant-time comparison). The token is
+ *   the only credential agent workspaces ever see — real API credentials never
+ *   enter them.
  * - [completions] — one [CompletableDeferred] per OPEN question that
  *   answer-waiters (REST long-poll, MCP blocking tool) suspend on, keyed by
  *   question id.
@@ -63,6 +65,11 @@ class QuestionsService(
     // across a database write. NOT taken by the hot `resolveToken` auth path.
     private val mutex = Mutex()
     private val registrations = ConcurrentHashMap<Int, ProcessRegistration>()
+
+    // SHA-256 of each registered token → its process id, so a callback (and every proxied
+    // request through `whoami`) resolves in one lookup, not a scan of every registration up to
+    // capacity eviction. Changed only under [mutex], next to [registrations]. See ADR-0110.
+    private val processByTokenDigest = ConcurrentHashMap<String, Int>()
     private val activeWaits = mutableMapOf<Int, Int>()
     private val completions = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
 
@@ -84,20 +91,24 @@ class QuestionsService(
         val token = generateToken()
         val redactor = secretRedactor(token)
         mutex.withLock {
-            registrations[processId] = ProcessRegistration(agentName = agentName, token = token, secretRedactor = redactor)
+            registrations
+                .put(processId, ProcessRegistration(agentName = agentName, token = token, secretRedactor = redactor))
+                ?.let { processByTokenDigest.remove(tokenDigest(it.token)) }
+            processByTokenDigest[tokenDigest(token)] = processId
         }
         return token
     }
 
     /**
      * Resolves a presented callback token to its process id, or null when no
-     * registration matches. Each candidate comparison is constant-time, so a
-     * wrong token leaks nothing about any registered token's content.
+     * registration matches. The lookup is by the token's SHA-256, so its timing can
+     * reveal at most a digest prefix, never the token; the final comparison is
+     * constant-time.
      */
     fun resolveToken(token: String): Int? =
-        registrations.entries
-            .firstOrNull { matchesTokenConstantTime(it.value.token, token) }
-            ?.key
+        processByTokenDigest[tokenDigest(token)]?.takeIf { processId ->
+            registrations[processId]?.let { matchesTokenConstantTime(it.token, token) } == true
+        }
 
     /**
      * Validates question text + options against the configured limits. Shared by
@@ -312,10 +323,13 @@ class QuestionsService(
 
     /** Drops the token registration and every question of a purged process. */
     suspend fun removeForProcess(processId: Int) {
-        mutex.withLock { registrations.remove(processId) }
+        mutex.withLock { registrations.remove(processId)?.let { processByTokenDigest.remove(tokenDigest(it.token)) } }
         val removedIds = repository.removeForProcess(processId)
         removedIds.forEach { completions.remove(it)?.complete(Unit) }
     }
+
+    private fun tokenDigest(token: String): String =
+        HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.toByteArray(Charsets.UTF_8)))
 
     private fun generateToken(): String {
         val bytes = ByteArray(TOKEN_BYTES)
