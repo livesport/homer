@@ -8,7 +8,11 @@ data class RunnersStatusResponse(
     val runners: List<RunnerStatus>,
 )
 
-/** One configured runner (`local`, `ssh`, `kubernetes` or `external`) in the operator view. */
+/**
+ * One configured runner (`local`, `ssh`, `kubernetes` or `external`) in the operator view.
+ * Operator-chosen naming is admin-only: a non-admin reader gets a blank `alias`, except on the
+ * built-in `local` row, whose fixed alias Homer assigns. See ADR-0077, ADR-0111.
+ */
 @Serializable
 data class RunnerStatus(
     val alias: String,
@@ -19,7 +23,11 @@ data class RunnerStatus(
     val instances: List<RunnerInstanceStatus>? = null, // external only
 )
 
-/** One live instance of an `external` domain, as registered via the runner protocol. */
+/**
+ * One live instance of an `external` domain, as registered via the runner protocol. The
+ * instance's identity is operator-visible metadata: `instanceId` and `name` are admin-only and
+ * blank for a non-admin reader, while its capacity and liveness stay. See ADR-0077, ADR-0111.
+ */
 @Serializable
 data class RunnerInstanceStatus(
     val instanceId: String,
@@ -49,7 +57,7 @@ data class RunnerQueueGroup(
     val oldestAgeSec: Long,
 )
 
-/** Exactly one of the two is set. */
+/** Exactly one of the two is set — except in a redacted view, where an alias filter carries neither. See ADR-0111. */
 @Serializable
 data class RunnerFilterView(
     val alias: String? = null,

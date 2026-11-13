@@ -1,0 +1,8 @@
+name: runner-alias-unserved
+description: Pins the alias of the idle e2e domain, which no instance registers; the claim waits in the queue for its short TTL, seeding a pending alias-filtered claim for the redacted queue check before the run fails
+runner: e2e-idle
+runnerClaimTimeoutSec: 5
+commands:
+  - !<cmd>
+    label: never-runs
+    cmd: echo "must not run"

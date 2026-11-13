@@ -66,7 +66,9 @@ names no host, tenant or environment.
 
 `GET /api/v1/runners` stays admin-only (it exists for operators and lists
 every configured alias), so `kind` there is the admin-side twin of the
-status response's `type`.
+status response's `type` *(amended 2026-11-13: a `read` grant on `*` reads it
+with every alias, instance name and alias filter withheld — see the amendment
+below and ADR-0111)*.
 
 ### Consequences
 
@@ -94,6 +96,22 @@ status response's `type`.
 - Bad: a READ grant on an agent is what makes the run visible in the
   first place, so the alias would ship to exactly the non-admins the
   finding is about.
+
+## Amendment (2026-11-13): the server-wide runner read admits a `read` grant on `*`
+
+`GET /api/v1/runners` and `/api/v1/runners/queue` are no longer admin-only: a
+caller holding a `read` grant on the literal `*` pattern reads them with
+`alias`, `instanceId` and `name` blanked (and a queue group's alias filter
+`null`, the value it already carries when unset), while the built-in
+`local` row keeps its alias and the generic fields (`kind`, tags, concurrency,
+counts, ages) stay. That is this ADR's own classification applied to the
+server-wide view: operator-chosen naming stays admin-only, the generic kind goes
+to every reader. `GET /api/v1/maintenance` admits the same grant; `POST` stays
+admin-only, and its denial keeps the bare `404` of ADR-0092. Per-run
+`runner.alias` on `/status` and `/status/all` is unchanged — still admin-only.
+The widening, the withheld fields and the rejected alternatives (any `read`
+grant, a dedicated grant action, keeping the endpoints closed) are decided in
+[ADR-0111](0111-read-grant-on-star-reads-runner-state.md).
 
 ## More Information
 

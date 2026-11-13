@@ -52,6 +52,27 @@ class AuthorizerTest {
     }
 
     @Test
+    fun `canReadServerState admits an admin, unsecured mode and a read grant on star`() {
+        val admin = authz("root" to Authorizer.PrincipalGrants(admin = true, grants = emptyList()))
+        assertTrue(admin.canReadServerState("root"))
+        assertTrue(Authorizer(emptyMap(), emptyMap(), enabled = false).canReadServerState(null))
+        val star = authz("status" to Authorizer.PrincipalGrants(false, listOf(Grant(listOf("*"), listOf(Action.READ)))))
+        assertTrue(star.canReadServerState("status"))
+    }
+
+    @Test
+    fun `canReadServerState denies a narrow grant, another action on star, and an unknown principal`() {
+        val oneAgent = authz("bob" to Authorizer.PrincipalGrants(false, listOf(Grant(listOf("echo"), listOf(Action.READ)))))
+        assertFalse(oneAgent.canReadServerState("bob"), "an agent-level read must not unlock server state")
+        val prefix = authz("bob" to Authorizer.PrincipalGrants(false, listOf(Grant(listOf("deploy-*"), listOf(Action.READ)))))
+        assertFalse(prefix.canReadServerState("bob"), "a prefix pattern is not the match-all grant")
+        val writeOnly = authz("ci" to Authorizer.PrincipalGrants(false, listOf(Grant(listOf("*"), listOf(Action.RUN, Action.CONTROL)))))
+        assertFalse(writeOnly.canReadServerState("ci"), "the grant is read-only in the literal sense too")
+        assertFalse(oneAgent.canReadServerState("ghost"))
+        assertFalse(oneAgent.canReadServerState(null))
+    }
+
+    @Test
     fun `anyGrant is true for any action matching the agent, regardless of which one`() {
         val a = authz("ci" to Authorizer.PrincipalGrants(false, listOf(Grant(listOf("deploy-*"), listOf(Action.DEBUG)))))
         assertTrue(a.anyGrant("ci", "deploy-web"))

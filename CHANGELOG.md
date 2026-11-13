@@ -5,6 +5,7 @@
 ### Homer
 
 - **Added: `/api/v1/callback/whoami`** — Resolves a run's callback token to its process id and agent, so an egress proxy can apply a per-agent policy. See [ADR-0110](docs/adr/0110-run-identity-for-egress-proxies.md).
+- **Changed: the runner and queue status reads admit a `read` grant on `*`** — A principal granted `read` on every agent can poll `GET /api/v1/runners`, `/api/v1/runners/queue` and `/api/v1/maintenance` without `role: admin`, with the operator-chosen runner aliases and instance names withheld. See [ADR-0111](docs/adr/0111-read-grant-on-star-reads-runner-state.md).
 - **Added: runner instance `version` on `GET /api/v1/runners`** — Each pull-mode instance carries the version it registered with, `null` when it reported none; a `version` outside the tag shape is refused at registration with `422`.
 
 ### Console

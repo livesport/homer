@@ -10,6 +10,7 @@ import homer.app.models.RunnerQueueGroup
 import homer.app.models.RunnerQueueStatusResponse
 import homer.app.models.SshAuth
 import homer.app.runners.external.ExternalRunnerDomain
+import homer.app.runners.external.ExternalRunnerInstance
 import homer.app.runners.external.RegisterInstanceRequest
 import homer.app.runners.queue.PendingClaim
 import homer.app.runners.queue.RunnerClaimQueue
@@ -58,7 +59,7 @@ class RunnerStatusReportTest {
             )
         val registry = RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
 
-        val status = runnersStatus(config, registry)
+        val status = runnersStatus(config, registry, namesVisible = true)
 
         assertEquals(listOf("local", "ssh-a", "workers"), status.runners.map { it.alias })
         assertEquals(listOf("local", "ssh", "external"), status.runners.map { it.kind })
@@ -78,7 +79,7 @@ class RunnerStatusReportTest {
             }
         val registry = RunnerRegistry(entries = emptyList(), queue = RunnerClaimQueue(maxPending = 10))
 
-        val status = runnersStatus(config, registry)
+        val status = runnersStatus(config, registry, namesVisible = true)
 
         assertEquals(listOf("ssh-a"), status.runners.map { it.alias })
     }
@@ -89,7 +90,7 @@ class RunnerStatusReportTest {
         val config = appConfig(mapOf("ssh-a" to sshRunnerConfig()))
         val registry = RunnerRegistry(entries = emptyList(), queue = queue)
 
-        val status = runnersStatus(config, registry)
+        val status = runnersStatus(config, registry, namesVisible = true)
 
         assertEquals(0, status.runners.first { it.alias == "ssh-a" }.inUse)
     }
@@ -110,7 +111,8 @@ class RunnerStatusReportTest {
                 appConfig(
                     mapOf("k8s" to RunnerConfig.Kubernetes(image = "ubuntu:24.04", tags = listOf("linux", "gpu"), concurrency = 3)),
                 )
-            val k8s = runnersStatus(config, RunnerRegistry(entries = emptyList(), queue = queue)).runners.first { it.alias == "k8s" }
+            val registry = RunnerRegistry(entries = emptyList(), queue = queue)
+            val k8s = runnersStatus(config, registry, namesVisible = true).runners.first { it.alias == "k8s" }
 
             assertEquals("kubernetes", k8s.kind)
             assertEquals(listOf("gpu", "linux"), k8s.tags)
@@ -134,7 +136,7 @@ class RunnerStatusReportTest {
             val config = appConfig(mapOf("ssh-a" to sshRunnerConfig()))
             val registry = RunnerRegistry(entries = emptyList(), queue = queue)
 
-            assertEquals(1, runnersStatus(config, registry).runners.first { it.alias == "ssh-a" }.inUse)
+            assertEquals(1, runnersStatus(config, registry, namesVisible = true).runners.first { it.alias == "ssh-a" }.inUse)
         }
 
     @Test
@@ -147,7 +149,7 @@ class RunnerStatusReportTest {
         val config = appConfig(mapOf("workers" to RunnerConfig.External(token = "t".repeat(32))))
         val registry = RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
 
-        val workers = runnersStatus(config, registry).runners.first { it.alias == "workers" }
+        val workers = runnersStatus(config, registry, namesVisible = true).runners.first { it.alias == "workers" }
 
         assertEquals(0, workers.inUse)
         assertEquals(2, workers.instances?.size)
@@ -176,13 +178,99 @@ class RunnerStatusReportTest {
             val config = appConfig(mapOf("workers" to RunnerConfig.External(token = "t".repeat(32))))
             val registry = RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
 
-            val workers = runnersStatus(config, registry).runners.first { it.alias == "workers" }
+            val workers = runnersStatus(config, registry, namesVisible = true).runners.first { it.alias == "workers" }
 
             assertEquals(1, workers.inUse)
             val listed = workers.instances!!.single()
             assertEquals(true, listed.draining)
             assertEquals(1, listed.activeSessions)
         }
+
+    @Test
+    fun `a redacted view keeps the local alias and withholds configured, external and instance naming`() {
+        val queue = RunnerClaimQueue(maxPending = 10)
+        val domain = ExternalRunnerDomain("workers", RunnerConfig.External(token = "t".repeat(32)), queue)
+        val instance = domain.register(RegisterInstanceRequest(name = "host-1", tags = listOf("gpu"), concurrency = 2))
+        val config =
+            appConfig(
+                mapOf(
+                    "gpu-box" to sshRunnerConfig(tags = listOf("gpu"), concurrency = 2),
+                    "workers" to RunnerConfig.External(token = "t".repeat(32)),
+                ),
+            )
+        val registry = RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = queue)
+
+        val status = runnersStatus(config, registry, namesVisible = false)
+
+        // The built-in `local` alias is Homer's own name; every operator-chosen one is blanked, so
+        // the row keeps the non-null shape the console's DTO mirror declares (ADR-0082).
+        assertEquals(listOf("local", "", ""), status.runners.map { it.alias })
+        assertEquals(listOf("local", "ssh", "external"), status.runners.map { it.kind })
+        val ssh = status.runners[1]
+        assertEquals(listOf("gpu"), ssh.tags)
+        assertEquals(2, ssh.concurrency)
+        val workers = status.runners[2]
+        assertEquals(null, workers.concurrency)
+        assertEquals(0, workers.inUse)
+        val listed = workers.instances!!.single()
+        assertEquals("", listed.instanceId)
+        assertEquals("", listed.name)
+        assertEquals(listOf("gpu"), listed.tags)
+        assertEquals(2, listed.concurrency)
+        assertEquals(0, listed.activeSessions)
+        assertEquals(instance.registeredAt / 1000, listed.registeredAt)
+        assertEquals(instance.lastSeenAt / 1000, listed.lastSeenAt)
+        assertFalse(listed.draining)
+    }
+
+    @Test
+    fun `a redacted view drops a tag that fails RunnerTagValidation`() {
+        // Config load and instance registration both validate tags, so only a hand-built
+        // instance can carry one: the serializer must still refuse to echo it (ADR-0047 rule 2).
+        val domain = mockk<ExternalRunnerDomain>()
+        every { domain.alias } returns "workers"
+        every { domain.instances() } returns
+            listOf(
+                ExternalRunnerInstance(
+                    id = "i-1",
+                    name = "host-1",
+                    alias = "workers",
+                    tags = setOf("gpu", "bad tag"),
+                    declaredConcurrency = 1,
+                    version = null,
+                    registeredAt = 1_000,
+                ),
+            )
+        val config = appConfig(mapOf("workers" to RunnerConfig.External(token = "t".repeat(32))))
+        val registry =
+            RunnerRegistry(entries = emptyList(), externalDomains = listOf(domain), queue = RunnerClaimQueue(maxPending = 10))
+
+        val workers = runnersStatus(config, registry, namesVisible = false).runners.last()
+
+        assertEquals(listOf("gpu"), workers.instances!!.single().tags)
+    }
+
+    @Test
+    fun `a redacted queue view empties an alias filter and keeps pending, age and tags`() {
+        val pending =
+            listOf(
+                PendingClaim(RunnerFilter.Alias("gpu-box"), enqueuedAtMs = 1_000),
+                PendingClaim(RunnerFilter.Alias("gpu-box"), enqueuedAtMs = 5_000),
+                PendingClaim(RunnerFilter.Tags(setOf("gpu", "linux")), enqueuedAtMs = 3_000),
+            )
+
+        val status = runnerQueueStatus(pending, nowMs = 11_000, namesVisible = false)
+
+        assertEquals(3, status.pending)
+        assertEquals(10, status.oldestAgeSec)
+        assertEquals(
+            listOf(
+                RunnerQueueGroup(filter = RunnerFilterView(), pending = 2, oldestAgeSec = 10),
+                RunnerQueueGroup(filter = RunnerFilterView(tags = listOf("gpu", "linux")), pending = 1, oldestAgeSec = 8),
+            ),
+            status.byFilter,
+        )
+    }
 
     @Test
     fun `runnerType maps every backend and an unconfigured alias`() {
@@ -206,7 +294,7 @@ class RunnerStatusReportTest {
     fun `queue status is empty with null oldest age when nothing is pending`() {
         assertEquals(
             RunnerQueueStatusResponse(pending = 0, oldestAgeSec = null, byFilter = emptyList()),
-            runnerQueueStatus(emptyList(), 10_000),
+            runnerQueueStatus(emptyList(), 10_000, namesVisible = true),
         )
     }
 
@@ -219,7 +307,7 @@ class RunnerStatusReportTest {
                 PendingClaim(RunnerFilter.Alias("a"), enqueuedAtMs = 5_000),
             )
 
-        val status = runnerQueueStatus(pending, nowMs = 11_000)
+        val status = runnerQueueStatus(pending, nowMs = 11_000, namesVisible = true)
 
         assertEquals(3, status.pending)
         assertEquals(10, status.oldestAgeSec)
@@ -236,7 +324,7 @@ class RunnerStatusReportTest {
     fun `ages are never negative`() {
         val pending = listOf(PendingClaim(RunnerFilter.Alias("a"), enqueuedAtMs = 20_000))
 
-        val status = runnerQueueStatus(pending, nowMs = 10_000)
+        val status = runnerQueueStatus(pending, nowMs = 10_000, namesVisible = true)
 
         assertEquals(0, status.oldestAgeSec)
         assertEquals(0, status.byFilter.single().oldestAgeSec)

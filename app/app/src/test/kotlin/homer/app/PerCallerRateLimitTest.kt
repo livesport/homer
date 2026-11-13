@@ -1,23 +1,33 @@
 package homer.app
 
+import homer.app.fixtures.authorizerFor
+import homer.app.models.Action
 import homer.app.models.AppConfig
 import homer.app.models.AuthConfig
+import homer.app.models.Grant
 import homer.app.models.RateLimitConfig
 import homer.app.models.Server
 import homer.app.models.TokenConfig
+import homer.app.routes.ApiDeps
+import homer.app.routes.apiV1Routes
+import homer.app.runners.RunnerRegistry
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
@@ -109,6 +119,54 @@ class PerCallerRateLimitTest {
                 "3rd same-host request must be 429 when all callers share the IP bucket",
             )
         }
+
+    /**
+     * The widened runner-state read is a polled path (§12 rule 5): the reader's own bucket
+     * sheds the excess, and a shed response is never cached.
+     */
+    @Test
+    fun `a read-star caller polling the runner state is shed with 429 and never cached`() =
+        testApplication {
+            val tokens =
+                mapOf(
+                    "status" to
+                        TokenConfig(
+                            token = "star-read-token",
+                            grants = listOf(Grant(listOf("*"), listOf(Action.READ))),
+                        ),
+                )
+            val config = config(AuthConfig.Bearer(tokens = tokens))
+            val deps =
+                mockk<ApiDeps>(relaxed = true) {
+                    every { this@mockk.config } returns config
+                    every { this@mockk.authorizer } returns authorizerFor(tokens)
+                    every { this@mockk.runnerRegistry } returns RunnerRegistry(entries = emptyList())
+                }
+            application {
+                configureRateLimiting(config)
+                install(Authentication) { buildBearerProvider(AuthConfig.Bearer(tokens = tokens)) }
+                configureStatusPages()
+                routing {
+                    install(ContentNegotiation) { json(apiJson) }
+                    authenticate("auth-bearer") {
+                        rateLimit(RateLimitName("perCaller")) { apiV1Routes(deps) }
+                    }
+                }
+            }
+
+            val first = pollRunnerState("star-read-token")
+            assertEquals(HttpStatusCode.OK, first.status)
+            assertEquals("no-store", first.headers[HttpHeaders.CacheControl], "live state must not be cached")
+            assertEquals(HttpStatusCode.OK, pollRunnerState("star-read-token").status)
+            assertEquals(
+                HttpStatusCode.TooManyRequests,
+                pollRunnerState("star-read-token").status,
+                "the 3rd poll must be shed — the reader's own bucket is exhausted",
+            )
+        }
+
+    private suspend fun io.ktor.server.testing.ApplicationTestBuilder.pollRunnerState(token: String) =
+        client.get("/api/v1/runners") { header(HttpHeaders.Authorization, "Bearer $token") }
 
     private suspend fun io.ktor.server.testing.ApplicationTestBuilder.pingWith(token: String) =
         client.get("/api/v1/ping") { header(HttpHeaders.Authorization, "Bearer $token") }

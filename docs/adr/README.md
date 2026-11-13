@@ -169,3 +169,4 @@ One of:
 | [0108](0108-graceful-stop-of-a-run.md) | A run can be stopped gracefully — opt-in, SIGINT before SIGKILL, and `FAILED` plus a `stop` record | proposed |
 | [0109](0109-grouped-ask-and-dispatch.md) | Grouped ask-and-dispatch — N questions, one fire | proposed |
 | [0110](0110-run-identity-for-egress-proxies.md) | Homer tells an egress proxy which run holds a callback token; the egress policy stays with the proxy | proposed |
+| [0111](0111-read-grant-on-star-reads-runner-state.md) | A `read` grant on `*` reads the server-wide runner state, with operator naming withheld | proposed |

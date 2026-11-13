@@ -900,7 +900,9 @@ operations: `POST /api/v1/agents/reload`, `GET /api/v1/costs*`, the
 server `GET /api/v1/status`, `GET /api/v1/runners`,
 `GET /api/v1/runners/queue`, and `POST /api/v1/agents/{agentName}/cron-run`
 (a non-admin gets `404` there, the same as an unknown agent; the others
-answer `403`), plus visibility of rows with no matching owner. It is mutually exclusive with a meaningful `grants` list — if
+answer `403` — except the two runner reads, which a `read` grant on `*` also
+reaches with operator-chosen names withheld, see
+[ADR-0111](../docs/adr/0111-read-grant-on-star-reads-runner-state.md)), plus visibility of rows with no matching owner. It is mutually exclusive with a meaningful `grants` list — if
 `role` is set, `grants` is ignored.
 
 **Validation at startup:** a principal with neither `role: admin` nor a
@@ -3810,8 +3812,14 @@ register, so this entry has neither.
 
 `GET /api/v1/runners` and `GET /api/v1/runners/queue` give an operator view
 of every configured runner (including live `external` instances) and of
-pending runner claims. Both are `admin`-only (`403` otherwise); payloads
-never carry a domain token, session id, or env value. See
+pending runner claims. Both are readable by an `admin` or by a caller holding
+a `read` grant on `*` (`403` otherwise). The grant reads the same state with
+every operator-chosen name withheld — `alias`, `instanceId` and `name` come
+back blank, except the built-in `local` row's fixed alias, and an alias filter
+carries no `alias` — while `kind`, tags, `concurrency`, `inUse`, `draining` and
+the queue ages stay. Payloads never carry a domain token, session id, or env
+value, and both responses are `Cache-Control: no-store`. See
+[ADR-0111](../docs/adr/0111-read-grant-on-star-reads-runner-state.md) and
 [`app/README.md`](README.md) for the response shapes. A runner domain
 token is a separate principal class
 ([ADR-0066](../docs/adr/0066-external-pull-runners-and-unified-claim-queue.md))
