@@ -243,10 +243,11 @@ pitest {
     targetClasses = providers.gradleProperty("pitestTargetClasses").map { it.split(",").toSet() }.orElse(setOf("homer.app.*"))
     excludedClasses = setOf("*\$\$serializer")
     targetTests = setOf("homer.app.*")
-    // PIT cannot instrument these tests' MockK constructor mocks (fails its green-suite phase);
-    // the wiring they pin stays enforced by :app:test. See ADR-0102.
+    // These fail PIT's green-suite phase, and the wiring they pin stays enforced by :app:test: the
+    // shutdown tests' MockK constructor mocks cannot be instrumented (ADR-0102), and MockCallBudgetTest
+    // needs the test task's system properties, which load the extension and set its report dir.
     excludedTestClasses =
-        setOf("homer.app.MaintenanceShutdownWiringTest", "homer.app.ShutdownWiringTest")
+        setOf("homer.app.MaintenanceShutdownWiringTest", "homer.app.ShutdownWiringTest", "homer.app.fixtures.MockCallBudgetTest")
     outputFormats = setOf("XML", "HTML")
     timestampedReports = false
     threads = 4
