@@ -984,10 +984,12 @@ configuration. Nothing changes for a deployment that never calls it.
   the affected runs' requests until they end.
 - **Carry the token in its own header.** At the proxy, `Authorization`
   belongs to the upstream and is overwritten with the real credential. An MCP
-  config sends it with `"headers": {"X-Homer-Callback-Token":
-  "${HMR_CALLBACK_TOKEN:-}"}` (the `:-` default keeps the config valid where
-  the variable is unset); shell tools use their extra-header settings, e.g.
-  git's `http.extraHeader`.
+  config for an upstream MCP server behind the proxy sends it with
+  `"headers": {"X-Homer-Callback-Token": "${HMR_CALLBACK_TOKEN:-}"}` (the `:-`
+  default keeps the config valid where the variable is unset); shell tools use
+  their extra-header settings, e.g. git's `http.extraHeader`. Only `whoami`
+  reads this header: Homer's own callback routes and `/mcp/questions` still
+  take the token as `Authorization: Bearer`, so leave those configs as they are.
 - **The proxy strips identity headers.** Remove the client's
   `X-Homer-Callback-Token`, `X-Homer-Agent` and `X-Homer-Process-Id` before
   forwarding, so neither the token reaches an upstream nor a run can claim an
