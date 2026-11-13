@@ -1,0 +1,13 @@
+name: whoami-probe
+description: Asks Homer which run holds its callback token, the way an egress proxy would, and prints what comes back
+commands:
+  - !<script>
+    label: whoami
+    timeout: 60
+    content: |
+      URL="$HMR_API_URL/api/v1/callback/whoami"
+      body() { curl -s --max-time 10 "$@" "$URL" | tr -d ' \n'; }
+      echo "dedicated=$(body -H "X-Homer-Callback-Token: $HMR_CALLBACK_TOKEN")"
+      echo "bearer=$(body -H "Authorization: Bearer $HMR_CALLBACK_TOKEN")"
+      echo "agent-header=$(curl -s --max-time 10 -o /dev/null -D - -H "X-Homer-Callback-Token: $HMR_CALLBACK_TOKEN" "$URL" | tr -d '\r' | sed -n 's/^[Xx]-[Hh]omer-[Aa]gent: //p')"
+      echo "bogus=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' -H "X-Homer-Callback-Token: not-a-token" "$URL")"
