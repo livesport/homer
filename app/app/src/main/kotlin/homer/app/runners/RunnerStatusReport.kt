@@ -55,7 +55,7 @@ fun runnersStatus(
             if (local.enabled) {
                 add(
                     RunnerStatus(
-                        // Homer assigns the built-in alias, so it survives the redacted view.
+                        // Homer assigns the built-in alias, so it survives the redacted view (ADR-0111).
                         LocalRunner.ALIAS,
                         runnerType(config, LocalRunner.ALIAS),
                         visibleTags(local.tags, namesVisible),
@@ -102,9 +102,7 @@ private const val WITHHELD_NAME = ""
 
 /**
  * The name a response carries: blank in a redacted view, where an operator-chosen alias, instance
- * id or instance name is withheld. Blank rather than null, so the row keeps the non-null shape the
- * console's DTO mirror declares — a nullable field would force a console type change (ADR-0082).
- * See ADR-0077, ADR-0111.
+ * id or instance name is withheld. See ADR-0077, ADR-0111.
  */
 private fun visibleName(
     name: String,

@@ -11,8 +11,7 @@ data class RunnersStatusResponse(
 /**
  * One configured runner (`local`, `ssh`, `kubernetes` or `external`) in the operator view.
  * Operator-chosen naming is admin-only: a non-admin reader gets a blank `alias`, except on the
- * built-in `local` row, whose fixed alias Homer assigns. The field stays a non-null string, so a
- * redacted view keeps the shape the console's DTO mirror declares (ADR-0082). See ADR-0077, ADR-0111.
+ * built-in `local` row, whose fixed alias Homer assigns. See ADR-0077, ADR-0111.
  */
 @Serializable
 data class RunnerStatus(
@@ -27,8 +26,7 @@ data class RunnerStatus(
 /**
  * One live instance of an `external` domain, as registered via the runner protocol. The
  * instance's identity is operator-visible metadata: `instanceId` and `name` are admin-only and
- * blank for a non-admin reader, while its capacity and liveness stay. Both stay non-null strings,
- * like [RunnerStatus.alias]. See ADR-0077, ADR-0111.
+ * blank for a non-admin reader, while its capacity and liveness stay. See ADR-0077, ADR-0111.
  */
 @Serializable
 data class RunnerInstanceStatus(

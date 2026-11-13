@@ -39,6 +39,12 @@
       "homerApiUrl": "http://127.0.0.1:8080",
       "heartbeatTimeoutSec": 35,
       "allowedTags": ["e2e-affinity"]
+    },
+    "e2e-idle": {
+      "type": "external",
+      "token": "e2e-idle-domain-token-0123456789abcdef",
+      "homerApiUrl": "http://127.0.0.1:8080",
+      "heartbeatTimeoutSec": 35
     }
   },
   "agentsSearchPath": "/app/agents",
