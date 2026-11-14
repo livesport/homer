@@ -85,12 +85,19 @@ function ConfiguredRunnersCard({ runners }: { runners: RunnerStatus[] }) {
 
 type InstanceRow = RunnerInstanceStatus & { domain: string };
 
+// The `-slim` image variant (ADR-0094) is not part of the release, so it is ignored on both
+// sides of the comparison: the same release is never flagged, whichever variant either reports.
+function stripSlim(version: string) {
+  return version.endsWith('-slim') ? version.slice(0, -'-slim'.length) : version;
+}
+
 // The instance's self-reported version, with an exclamation mark when it differs from Homer's.
-// Both sides render as React text and the comparison is exact string equality; a version the
-// instance did not report reads as unknown and is never flagged.
+// Both sides render as React text; the comparison is exact string equality on the release, with
+// the image variant stripped from both sides. A version the instance did not report reads as
+// unknown and is never flagged.
 function InstanceVersion({ version, homerVersion }: { version?: string | null; homerVersion?: string }) {
   if (!version) return <span className="text-muted-foreground">unknown</span>;
-  const mismatch = !!homerVersion && version !== homerVersion;
+  const mismatch = !!homerVersion && stripSlim(version) !== stripSlim(homerVersion);
   const tooltip = `Runner ${version} differs from Homer ${homerVersion}`;
   return (
     <span className="inline-flex items-center gap-1 font-mono text-sm">

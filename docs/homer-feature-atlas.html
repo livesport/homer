@@ -3479,8 +3479,8 @@ HOMER_LOG_DIR=/app/workspace</code></pre>
           <h3>Runners overview <span class="where">console</span></h3>
           <p>A read-only admin view of configured runners, registered pull-mode instances and the claim queue, refreshed
             every 5 s. Each pull-mode instance shows the version it registered with (&ldquo;unknown&rdquo; when it
-            reported none), with an exclamation mark when that version differs from the Homer server&rsquo;s, so an
-            outdated instance is visible at a glance.</p>
+            reported none), with an exclamation mark when its release differs from the Homer server&rsquo;s, ignoring
+            the <code>-slim</code> image variant suffix (ADR-0094), so an outdated instance is visible at a glance.</p>
           <pre><code>/runners</code></pre>
         </article>
 

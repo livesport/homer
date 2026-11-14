@@ -84,6 +84,36 @@ describe('RunnersPage', () => {
     expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
   });
 
+  it('shows no indicator when the instance runs the same release as a slim Homer server', () => {
+    mockHeartbeat({ data: { status: 'ok', version: '1.42.0-slim' }, isLoading: false, error: null });
+    mockRunners(runnersWithInstance('1.42.0'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.42.0')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
+  });
+
+  it('shows no indicator when a slim instance reports against a plain Homer server', () => {
+    mockRunners(runnersWithInstance('1.42.0-slim'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.42.0-slim')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
+  });
+
+  it('shows no indicator when a slim instance and a slim Homer server report the same release', () => {
+    mockHeartbeat({ data: { status: 'ok', version: '1.42.0-slim' }, isLoading: false, error: null });
+    mockRunners(runnersWithInstance('1.42.0-slim'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.42.0-slim')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
+  });
+
+  it('flags a different release against a slim Homer server, naming both versions', () => {
+    mockHeartbeat({ data: { status: 'ok', version: '1.42.0-slim' }, isLoading: false, error: null });
+    mockRunners(runnersWithInstance('1.41.0'));
+    render(<RunnersPage />);
+    expect(screen.getByLabelText('Runner 1.41.0 differs from Homer 1.42.0-slim')).toBeInTheDocument();
+  });
+
   it('shows unknown, without an indicator, for an instance that reported no version', () => {
     mockRunners(runnersWithInstance(null));
     render(<RunnersPage />);
