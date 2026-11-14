@@ -357,8 +357,9 @@ Navigate to **Runners** from the sidebar (admin only) for a read-only
 snapshot of the claim queue system: a table of every configured runner
 with its kind, tags and permits in use; a table of each external
 runner's registered pull-mode instances, with the version each reported
-(an exclamation mark when it differs from the Homer server's, `unknown`
-when it reported none), their tags, session capacity, last-seen and
+(an exclamation mark when its release differs from the Homer server's,
+ignoring the `-slim` image variant suffix; `unknown` when it reported
+none), their tags, session capacity, last-seen and
 registered times, and a Draining badge for an
 instance winding down; and a breakdown of runs currently waiting for a
 runner, by the alias or tags they need, with the pending count and the
