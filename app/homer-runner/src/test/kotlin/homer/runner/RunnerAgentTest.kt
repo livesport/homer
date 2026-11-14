@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -39,6 +40,27 @@ class RunnerAgentTest {
 
     private fun <T> live(block: suspend CoroutineScope.() -> T): T =
         runBlocking(Dispatchers.Default) { withTimeout(20.seconds) { block() } }
+
+    @Test
+    fun `the registration carries the version this build was made from`() =
+        live {
+            val agent = RunnerAgent(api, options(), scriptedWorker(), fastBackoff)
+            val run = async { agent.run() }
+            awaitUntil { api.registrations.isNotEmpty() }
+
+            val sent = api.registrations.first().version
+            assertEquals(RunnerAgent.VERSION, sent, "the request carries the build's version")
+            assertTrue(sent!!.isNotBlank())
+            assertNotEquals("0.1.0", sent, "the old hardcoded constant is gone")
+            agent.drain()
+            run.await()
+        }
+
+    @Test
+    fun `RunnerOptions without an explicit version reports the build's version`() {
+        assertEquals(RunnerAgent.VERSION, options().version)
+        assertEquals(RunnerAgent.VERSION, RunnerVersion.current)
+    }
 
     @Test
     fun `a 4xx registration is fatal and a connection error is retried`() =

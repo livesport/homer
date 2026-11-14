@@ -102,7 +102,11 @@ class ExternalRunnerDomain(
         return name
     }
 
-    /** The instance version [requested], null when absent or blank; rejected unless it has a tag's shape. */
+    /**
+     * The version [requested], null when absent or blank; rejected unless it has a tag's shape.
+     * The field stays optional (ADR-0066: the runner and Homer upgrade independently), but an
+     * instance writes it, so an unbounded one would be stored and later shown to operators.
+     */
     private fun validatedVersion(requested: String?): String? {
         // The version is logged with the registration and shown to console admins, so an
         // unvalidated one is both a log-injection vector and unbounded runner-written text. Same

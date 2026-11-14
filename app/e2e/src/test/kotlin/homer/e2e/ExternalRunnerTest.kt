@@ -6,7 +6,9 @@ import homer.e2e.support.E2eTestBase
 import homer.e2e.support.HomerApi
 import homer.e2e.support.RunnerInstanceView
 import homer.e2e.support.RunnerQueueView
+import homer.e2e.support.RunnerRegisterResponse
 import homer.e2e.support.RunnersView
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -163,6 +165,39 @@ class ExternalRunnerTest : E2eTestBase() {
 
             assertEquals("FAILED", info.status)
             assertTrue("e2e-crash-runner" !in instanceNames(), "the dead instance must be dropped")
+        }
+
+    @Test
+    fun `a register request with a malformed version is refused with 422 and a well-formed one registers`() =
+        // <Unit>: the block ends in awaitNotNull's String, and JUnit skips non-void @Test methods.
+        runBlocking<Unit> {
+            val domain = "Bearer e2e-external-domain-token-0123456789"
+
+            suspend fun register(body: String) =
+                E2e.client.post("/api/v1/runner/register") {
+                    header(HttpHeaders.Authorization, domain)
+                    setBody(TextContent(body, ContentType.Application.Json))
+                }
+
+            // A version a space or a 65th character disfigures must never reach storage.
+            for (version in listOf("1.42 .0", "1" + "0".repeat(64))) {
+                val refused = register("""{"name":"e2e-version-probe","version":"$version"}""")
+                assertEquals(HttpStatusCode.UnprocessableEntity, refused.status, "version '$version'")
+            }
+            assertTrue("e2e-version-probe" !in instanceNames(), "a refused registration stores no instance")
+
+            val ok = register("""{"name":"e2e-version-probe","version":"1.42.0"}""")
+            assertEquals(HttpStatusCode.Created, ok.status)
+            awaitInstance("e2e-version-probe")
+
+            val id = E2e.json.decodeFromString<RunnerRegisterResponse>(ok.bodyAsText()).instanceId
+            assertEquals(
+                HttpStatusCode.NoContent,
+                E2e.client.delete("/api/v1/runner/instances/$id") { header(HttpHeaders.Authorization, domain) }.status,
+            )
+            Awaits.awaitNotNull<String>("deregistered instance gone", timeoutMs = 15_000, pollMs = 500) {
+                "e2e-version-probe".takeIf { it !in instanceNames() }
+            }
         }
 
     private suspend fun probe(): String {

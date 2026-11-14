@@ -154,3 +154,18 @@ verbatim, where the tag shape makes the stored value safe as-is (§12).
 The routes are mounted outside `authenticate(...)` next to `callbackRoutes`: a
 domain token is a separate principal class (§12). The registry runs a
 heartbeat sweeper that drops silent instances and fails their runs.
+
+**The reference pull runner reports its build, not its host.** The version
+`homer-runner` sends at registration is stamped at build time into a
+classpath resource (`homerVersion` Gradle property, else the `HOMER_VERSION`
+environment the release workflow already passes for the images — ADR-0093 —
+else `dev`) and read only from that resource. The alternatives were rejected
+for one reason: a version read from run-time configuration (as the *server*
+reads its own `HOMER_VERSION` env) or from the jar's `Implementation-Version`
+manifest attribute would make the reported value a property of the host or of
+the packaging step, and it is only meaningful when every host running the
+same jar reports identically. A build without release information reports
+`dev` everywhere for the same reason — the fallback lives in the build
+default, never in per-runner config. The server still validates whatever
+arrives against the tag shape (`ExternalRunnerDomain.validatedVersion`),
+since the field is runner-written (ADR-0066 keeps it optional).

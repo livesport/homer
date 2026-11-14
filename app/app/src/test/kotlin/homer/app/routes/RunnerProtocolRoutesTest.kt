@@ -196,6 +196,24 @@ class RunnerProtocolRoutesTest {
         }
 
     @Test
+    fun `register rejects a malformed version with 422 and lists no instance`() =
+        testApplication {
+            mount()
+            val tooLong = "1" + "0".repeat(64)
+            assertEquals(HttpStatusCode.UnprocessableEntity, register(body = """{"version":"$tooLong"}""").status)
+            assertEquals(HttpStatusCode.UnprocessableEntity, register(body = """{"version":"1.42.0\nboom"}""").status)
+            assertTrue(workers.instances().isEmpty(), "a refused registration lists no instance")
+
+            // An older runner sends no version at all; it must still register (ADR-0066).
+            val withoutVersion = registered(name = "host-1")
+            assertNull(workers.instance(withoutVersion.instanceId)!!.version)
+            val withVersion = register(body = """{"name":"host-2","version":"1.42.0"}""")
+            assertEquals(HttpStatusCode.Created, withVersion.status)
+            val id = apiJson.decodeFromString(RegisterInstanceResponse.serializer(), withVersion.bodyAsText()).instanceId
+            assertEquals("1.42.0", workers.instance(id)!!.version)
+        }
+
+    @Test
     fun `register refuses a malformed version with 422 and registers no instance for it`() =
         testApplication {
             mount()
