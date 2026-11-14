@@ -86,11 +86,15 @@ function ConfiguredRunnersCard({ runners }: { runners: RunnerStatus[] }) {
 type InstanceRow = RunnerInstanceStatus & { domain: string };
 
 // The instance's self-reported version, with an exclamation mark when it differs from Homer's.
-// Both sides render as React text and the comparison is exact string equality; a version the
-// instance did not report reads as unknown and is never flagged.
+// Both sides render as React text. The comparison ignores the server image variant: the slim
+// image reports `<release>-slim` (ADR-0094) while a runner reports the plain release, so the
+// suffix is stripped from Homer's version only. A version the instance did not report reads as
+// unknown and is never flagged.
 function InstanceVersion({ version, homerVersion }: { version?: string | null; homerVersion?: string }) {
   if (!version) return <span className="text-muted-foreground">unknown</span>;
-  const mismatch = !!homerVersion && version !== homerVersion;
+  const slimSuffix = '-slim';
+  const homerRelease = homerVersion?.endsWith(slimSuffix) ? homerVersion.slice(0, -slimSuffix.length) : homerVersion;
+  const mismatch = !!homerRelease && version !== homerRelease;
   const tooltip = `Runner ${version} differs from Homer ${homerVersion}`;
   return (
     <span className="inline-flex items-center gap-1 font-mono text-sm">

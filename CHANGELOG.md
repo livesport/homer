@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Console
+
+- **Fixed: Runners page ignores the `-slim` server image suffix** — A runner on the same release as a slim Homer server is no longer flagged as a version mismatch.
+
 ## [1.43.0] - 2026-11-14
 
 ### Homer
