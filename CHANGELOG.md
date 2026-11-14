@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-11-14
+
 ### Homer
 
 - **Fixed: `homer-runner` reports its release version** — A pull runner registers with the version of the release it was built from (`dev` for a source build) instead of `0.1.0`, and Homer rejects a malformed version.
