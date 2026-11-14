@@ -92,6 +92,13 @@ describe('RunnersPage', () => {
     expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
   });
 
+  it('shows no indicator when a slim instance reports against a plain Homer server', () => {
+    mockRunners(runnersWithInstance('1.42.0-slim'));
+    render(<RunnersPage />);
+    expect(screen.getByText('1.42.0-slim')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/differs from Homer/)).not.toBeInTheDocument();
+  });
+
   it('shows no indicator when a slim instance and a slim Homer server report the same release', () => {
     mockHeartbeat({ data: { status: 'ok', version: '1.42.0-slim' }, isLoading: false, error: null });
     mockRunners(runnersWithInstance('1.42.0-slim'));
